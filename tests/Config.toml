@@ -1,0 +1,7 @@
+port = 9300
+allowedOrigins = "https://app.example.com, http://localhost:5173"
+allowLoopback = true
+requestsPerMinute = 6000
+burst = 100
+maxBodyBytes = 1000
+maxRequestSeconds = 2
