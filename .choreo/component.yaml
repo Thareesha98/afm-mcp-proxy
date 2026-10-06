@@ -1,0 +1,11 @@
+schemaVersion: 1.2
+
+endpoints:
+  - name: mcp-proxy
+    displayName: MCP Proxy
+    service:
+      basePath: /
+      port: 8787
+    type: REST
+    networkVisibilities:
+      - Public
