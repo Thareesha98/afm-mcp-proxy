@@ -128,6 +128,15 @@ else
     fail "6  header forwarding is wrong" "The target saw: $(tr -d '\n ' < "$BODY" | head -c 400)"
 fi
 
+call GET "https://httpbin.org/redirect-to?url=/get&status_code=307" -H "Origin: $APP_ORIGIN"
+if [ "$STATUS" = "200" ] && body_has "httpbin.org/get"; then
+    pass "7  a relative redirect is followed by the proxy"
+elif [ "$STATUS" = "307" ]; then
+    fail "7  the redirect was handed back instead of followed (HTTP 307)" "The deployed proxy is an older build without redirect following. Rebuild and deploy it."
+else
+    fail "7  following a redirect gave HTTP $STATUS" "Body: $(head -c 300 "$BODY")"
+fi
+
 echo
 if [ "$FAILURES" -eq 0 ]; then
     echo "All checks passed."

@@ -8,7 +8,8 @@ It adds nothing to the traffic and keeps nothing: no sessions, no database, no l
 
 - Takes `GET`, `POST` and `DELETE` requests for `/?target=<url-encoded https URL>` and forwards them to the target. The response, including a server-sent event stream, is passed back as it arrives.
 - Answers the browser's `OPTIONS` preflight and adds CORS headers, but only for the origins in `allowedOrigins`. A request from any other origin gets 403.
-- Refuses targets that resolve to private, loopback or otherwise non-public addresses. The name is resolved once and the proxy connects to the address it checked, over TLS with the host name verified. Redirects are not followed.
+- Refuses targets that resolve to private, loopback or otherwise non-public addresses. The name is resolved once and the proxy connects to the address it checked, over TLS with the host name verified.
+- Follows redirects (301, 302, 303, 307, 308) itself, up to 5, and checks every hop exactly like the first target, so a redirect to a private address is refused with 502. A hop to another host is sent without credentials: only `Accept`, `Accept-Encoding`, `Accept-Language`, `Content-Type`, `Mcp-Protocol-Version` and `User-Agent` go on. 307 and 308 keep the method and body; 303, and 301 or 302 on a POST, become a GET.
 - Passes `Authorization`, `X-Api-Key` and similar headers to the target, and never forwards `Cookie`, `Origin`, `Referer` or proxy headers. `Set-Cookie` is never returned.
 - Applies one shared rate limit to the whole relay.
 
@@ -50,4 +51,5 @@ See [docs/CHOREO_DEPLOYMENT.md](docs/CHOREO_DEPLOYMENT.md) for the Choreo steps 
 - A request body is read into memory in full, up to `maxBodyBytes`.
 - Rejections made by the HTTP listener itself (414, 431, 408, and a body over twice `maxBodyBytes`) carry no CORS headers.
 - IPv6 literals, internationalised host names and URLs with user-info are not accepted as targets.
+- `./` and `../` in a path, in a target or in a redirect's `Location`, are passed on as written and not normalised.
 - The rate limit is one shared budget kept in memory per instance.
