@@ -2,7 +2,7 @@
 
 A small relay, written in Ballerina, that lets a browser app talk to remote MCP and OAuth servers. A browser cannot call most of them directly because of CORS. The proxy makes the call for it and sends the answer back with the right CORS headers.
 
-It adds nothing to the traffic and keeps nothing: no sessions, no database, no logging of requests.
+It adds nothing to the traffic and keeps nothing: no sessions, no database, no logging of requests. Its only log output is a startup line and, every minute, one line of counts (see Monitoring).
 
 ## What it does
 
@@ -26,10 +26,31 @@ Values come from `Config.toml`, from environment variables named `BAL_CONFIG_VAR
 | `burst` | `300` | Size of the shared rate limit bucket. |
 | `maxBodyBytes` | `1000000` | Largest accepted request body (1 to 1073741824). |
 | `maxRequestSeconds` | `120` | Time allowed for the target to answer. |
+| `statsIntervalSeconds` | `60` | Seconds between the summary lines of counts. |
 
 The proxy refuses to start when Ballerina observability, metrics or tracing is switched on, because they would record request URLs, and the URL holds the target.
 
 `Config.toml` also sets `maxBackPressureStallTime = 10` for `ballerina/http`, so a transfer nobody reads is released after seconds instead of minutes. As an environment variable that is `BAL_CONFIG_VAR_BALLERINA_HTTP_MAXBACKPRESSURESTALLTIME`.
+
+## Monitoring
+
+Every `statsIntervalSeconds` the proxy writes one line of counts, and nothing else about requests: no URLs, headers, addresses or bodies.
+
+```text
+stats requests=412 ok=380 redirects=2 clientErrors=25 serverErrors=5 forbidden=12 rateLimited=8 upstreamErrors=2 internalErrors=0 inFlight=3 peakInFlight=17
+```
+
+| Count | Meaning |
+|---|---|
+| `requests` | requests answered since the last line |
+| `ok`, `redirects`, `clientErrors`, `serverErrors` | the status class (2xx, 3xx, 4xx, 5xx) of every answer, whoever produced it |
+| `forbidden` | the proxy's own 403: an origin that is not allowed, or a private target |
+| `rateLimited` | the proxy's own 429 |
+| `upstreamErrors` | the proxy's own 502 and 504: DNS failed, the target was unreachable or too slow, or a redirect went somewhere refused |
+| `internalErrors` | the proxy's own 500 |
+| `inFlight`, `peakInFlight` | requests being answered now, and the most at once since the last line |
+
+A target's own 403 or 500 only shows in the status classes, never in the proxy's own counts. When the rate limit refused anything, or an internal error happened, a `WARN` line follows: `rate limit refused N requests since the last stats line` or `internal errors: N since the last stats line`. The counts start from zero on a restart and cover one instance.
 
 ## Run and test
 
@@ -52,4 +73,4 @@ See [docs/CHOREO_DEPLOYMENT.md](docs/CHOREO_DEPLOYMENT.md) for the Choreo steps 
 - Rejections made by the HTTP listener itself (414, 431, 408, and a body over twice `maxBodyBytes`) carry no CORS headers.
 - IPv6 literals, internationalised host names and URLs with user-info are not accepted as targets.
 - `./` and `../` in a path, in a target or in a redirect's `Location`, are passed on as written and not normalised.
-- The rate limit is one shared budget kept in memory per instance.
+- The rate limit and the counts are kept in memory per instance and start from zero on a restart.

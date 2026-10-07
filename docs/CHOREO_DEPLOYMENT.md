@@ -153,3 +153,22 @@ If it fails with a message about the Ballerina version or distribution, stop and
 - Rate limiting: configure the gateway limit (environment card → view icon of the endpoint → settings icon → **Manage** → **Rate Limiting**) and test the four things listed in the project notes: the 429 after N requests, a second client sharing the count, whether the preflight counts, and whether the 429 has CORS headers.
 - Production: **Promote** from the **Deploy** page, set `allowedOrigins` for production, and repeat steps 5.4 and 6 there, because settings are per environment.
 - To take it down: **Deploy** page, undeploy. Nothing else depends on it until you point the app at it.
+
+## 10. Watching the proxy
+
+Every minute the proxy writes one line of counts to the **Application** log (no URLs, headers or addresses). See **Observability** → **Runtime Logs**, log type **Application**, and search for `stats requests=`:
+
+```text
+stats requests=412 ok=380 redirects=2 clientErrors=25 serverErrors=5 forbidden=12 rateLimited=8 upstreamErrors=2 internalErrors=0 inFlight=3 peakInFlight=17
+```
+
+`forbidden`, `rateLimited`, `upstreamErrors` and `internalErrors` are what the proxy itself refused; the four status classes count every answer, including a target's own errors. When the rate limit refused something, or an internal error happened, a `WARN` line follows. Choreo's Log alerts match a phrase, so they can email you about exactly those lines.
+
+To create an alert you need the **DevOps** or **Platform Engineer** scope: open the component, then **Observability** → **Alerts** → **Create Alert Rule**, pick the **Alert Type** and the **Environment**, fill the fields, add up to 5 addresses under **Emails**, and click **Create** (a component can have 10 alerts).
+
+| Alert type | Fields | Tells you |
+|---|---|---|
+| Log | Search Phrase `rate limit refused`, Count `1`, Interval `5 minutes` | someone hit the proxy's rate limit |
+| Log | Search Phrase `internal errors:`, Count `1`, Interval `5 minutes` | the proxy hit a bug |
+| Traffic | Threshold, in requests per minute (for example `600`) | unusual volume, counted by the gateway |
+| Usage | Metric Memory, a threshold below the container limit from **DevOps** → **Containers** | the proxy is running out of memory |
