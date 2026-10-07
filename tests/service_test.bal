@@ -209,6 +209,7 @@ function testOneCallerIsNotLimitedOnItsOwn() returns error? {
 
 @test:Config
 function testEveryoneTogetherIsLimitedAndTheAnswerHasCors() returns error? {
+    _ = stats.take();
     future<http:Response|error>[] calls = [];
     foreach int i in 0 ..< 250 {
         future<http:Response|error> pending = start call("GET", ());
@@ -232,6 +233,10 @@ function testEveryoneTogetherIsLimitedAndTheAnswerHasCors() returns error? {
     test:assertEquals(headerOf(sample, "Access-Control-Allow-Origin"), ORIGIN);
     assertStandardHeaders(sample);
     runtime:sleep(1.5);
+    Window window = stats.take();
+    test:assertEquals(window.requests, 250);
+    test:assertEquals(window.rateLimited, limited);
+    test:assertEquals(window.inFlight, 0);
 }
 
 function assertStandardHeaders(http:Response res) {

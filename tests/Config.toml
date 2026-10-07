@@ -5,3 +5,4 @@ requestsPerMinute = 6000
 burst = 100
 maxBodyBytes = 1000
 maxRequestSeconds = 2
+statsIntervalSeconds = 100000

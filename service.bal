@@ -10,6 +10,7 @@ service / on new http:Listener(port, httpVersion = http:HTTP_1_1,
     requestLimits = {maxUriLength: 16384, maxHeaderSize: 16384, maxEntityBodySize: transportLimit}
 ) {
     resource function default [string... path](http:Caller caller, http:Request req) returns error? {
+        stats.opened();
         http:Response|error response = trap relay(req);
         http:Response result = response is http:Response ? response : errorResponse(500, "Internal error");
         error? decorated = trap addStandardHeaders(req, result);
@@ -17,6 +18,7 @@ service / on new http:Listener(port, httpVersion = http:HTTP_1_1,
             result = errorResponse(500, "Internal error");
         }
         http:ListenerError? sent = caller->respond(result);
+        stats.closed(result.statusCode);
         if sent is error {
             return;
         }
@@ -62,6 +64,7 @@ function headerValue(http:Request req, string name) returns string? {
 }
 
 function errorResponse(int status, string message) returns http:Response {
+    stats.refused(status);
     http:Response res = new;
     res.statusCode = status;
     res.setHeader("Cache-Control", "no-store");

@@ -8,6 +8,7 @@ configurable int requestsPerMinute = 1200;
 configurable int burst = 300;
 configurable int maxBodyBytes = 1000000;
 configurable int maxRequestSeconds = 120;
+configurable int statsIntervalSeconds = 60;
 
 const int MAX_BODY_BYTES_LIMIT = 1073741824;
 
@@ -21,8 +22,10 @@ function init() returns error? {
     check checkAtLeast("requestsPerMinute", requestsPerMinute, 1);
     check checkAtLeast("burst", burst, 1);
     check checkAtLeast("maxRequestSeconds", maxRequestSeconds, 1);
+    check checkAtLeast("statsIntervalSeconds", statsIntervalSeconds, 1);
     check checkTelemetryIsOff(observe:isObservabilityEnabled(), observe:isMetricsEnabled(), observe:isTracingEnabled());
 
+    _ = start reportEvery(statsIntervalSeconds);
     log:printInfo(string `MCP proxy listening on :${port} (allowed origins: ${string:'join(", ", ...origins)})`);
     if allowLoopback {
         log:printWarn("allowLoopback is on: loopback addresses and plain http are allowed. Development only.");
