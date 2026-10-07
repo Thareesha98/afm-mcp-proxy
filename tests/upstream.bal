@@ -19,19 +19,53 @@ class EventTicker {
     }
 }
 
+function echoText(http:Request req) returns string|error {
+    string text = req.method + " " + req.rawPath + "\n";
+    foreach string name in req.getHeaderNames() {
+        text += name.toLowerAscii() + ": " + string:'join(",", ...check req.getHeaders(name)) + "\n";
+    }
+    string|error body = req.getTextPayload();
+    return text + "body: " + (body is string ? body : "");
+}
+
 service / on upstreamListener {
     resource function default [string... path](http:Request req) returns http:Response|error {
         http:Response res = new;
         string route = path.length() > 0 ? path[0] : "";
         match route {
             "echo" => {
-                string text = req.method + " " + req.rawPath + "\n";
-                foreach string name in req.getHeaderNames() {
-                    text += name.toLowerAscii() + ": " + string:'join(",", ...check req.getHeaders(name)) + "\n";
+                res.setTextPayload(check echoText(req));
+            }
+            "to" => {
+                string? location = req.getQueryParamValue("location");
+                if location is () {
+                    res.setTextPayload(check echoText(req));
+                } else {
+                    string? status = req.getQueryParamValue("status");
+                    res.statusCode = status is string ? check int:fromString(status) : 302;
+                    res.setHeader("Location", location);
                 }
-                string|error body = req.getTextPayload();
-                text += "body: " + (body is string ? body : "");
-                res.setTextPayload(text);
+            }
+            "chain" => {
+                int left = check int:fromString(path[1]);
+                if left > 0 {
+                    res.statusCode = 302;
+                    res.setHeader("Location", "/chain/" + (left - 1).toString());
+                } else {
+                    res.setTextPayload(check echoText(req));
+                }
+            }
+            "loop" => {
+                res.statusCode = 302;
+                res.setHeader("Location", "/loop");
+            }
+            "bare" => {
+                res.statusCode = 302;
+            }
+            "slowredirect" => {
+                runtime:sleep(1.5);
+                res.statusCode = 302;
+                res.setHeader("Location", "/slow");
             }
             "missing" => {
                 res.statusCode = 404;

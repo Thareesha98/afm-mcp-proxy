@@ -64,14 +64,50 @@ function requestHeaders(http:Request req, Target target) returns map<string|stri
             headers[name] = values;
         }
     }
-    boolean defaultPort = target.port == (target.scheme == "https" ? 443 : 80);
-    headers["Host"] = defaultPort ? target.host : string `${target.host}:${target.port}`;
+    headers["Host"] = hostHeader(target);
     headers["Accept-Encoding"] = "identity";
     return headers;
 }
 
+function hostHeader(Target target) returns string {
+    boolean defaultPort = target.port == (target.scheme == "https" ? 443 : 80);
+    return defaultPort ? target.host : string `${target.host}:${target.port}`;
+}
+
 function forward(Target target, string method, map<string|string[]> headers, byte[] body, decimal seconds,
         decimal connectTimeout = CONNECT_TIMEOUT) returns http:Response|RequestError {
+    decimal deadline = time:monotonicNow() + seconds;
+    Target current = target;
+    string currentMethod = method;
+    byte[] currentBody = body;
+    map<string|string[]> currentHeaders = headers;
+    int redirects = 0;
+    while true {
+        http:Response response = check send(current, currentMethod, currentHeaders, currentBody, deadline - time:monotonicNow(), connectTimeout);
+        string? location = redirectLocation(response);
+        if location is () {
+            return response;
+        }
+        if redirects == MAX_REDIRECTS {
+            return error RequestError("Too many redirects", status = 502);
+        }
+        Target|RequestError next = checkTarget(resolveLocation(current, location), allowLoopback);
+        if next is RequestError {
+            return error RequestError("Redirect target is not allowed", status = 502);
+        }
+        boolean toGet = turnsIntoGet(response.statusCode, currentMethod);
+        currentHeaders = redirectHeaders(currentHeaders, next, sameOrigin(current, next), !toGet);
+        if toGet {
+            currentMethod = "GET";
+            currentBody = [];
+        }
+        current = next;
+        redirects += 1;
+    }
+}
+
+function send(Target target, string method, map<string|string[]> headers, byte[] body, decimal seconds,
+        decimal connectTimeout) returns http:Response|RequestError {
     decimal deadline = time:monotonicNow() + seconds;
     foreach string address in target.addresses {
         decimal remaining = deadline - time:monotonicNow();

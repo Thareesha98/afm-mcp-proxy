@@ -111,13 +111,37 @@ function testResponseHeadersAreCleanedAndCorsIsOurs() returns error? {
 }
 
 @test:Config
-function testTargetStatusesAndRedirectsPassThrough() returns error? {
+function testTargetStatusesPassThrough() returns error? {
     http:Response missing = check call("GET", UP + "/missing");
     test:assertEquals(missing.statusCode, 404);
     test:assertEquals(check missing.getTextPayload(), "nothing here");
-    http:Response redirect = check call("GET", UP + "/redirect");
-    test:assertEquals(redirect.statusCode, 302);
-    test:assertEquals(headerOf(redirect, "Location"), "/echo");
+}
+
+@test:Config
+function testRedirectIsFollowedAndTheAnswerHasCors() returns error? {
+    http:Response res = check call("GET", UP + "/redirect");
+    test:assertEquals(res.statusCode, 200);
+    test:assertTrue((check res.getTextPayload()).startsWith("GET /echo\n"));
+    test:assertEquals(headerOf(res, "Access-Control-Allow-Origin"), ORIGIN);
+    test:assertFalse(res.hasHeader("Location"));
+}
+
+@test:Config
+function testRedirectToABlockedAddressIsAn502WithCors() returns error? {
+    http:Response res = check call("GET", UP + "/to?status=302&location=http%3A%2F%2F10.0.0.1%2F");
+    check assertError(res, 502, "Redirect target is not allowed");
+    test:assertEquals(headerOf(res, "Access-Control-Allow-Origin"), ORIGIN);
+}
+
+@test:Config
+function testCredentialsFollowARedirectOnlyOnTheSameHost() returns error? {
+    http:Response same = check call("GET", UP + "/redirect", {"Authorization": "Bearer abc", "X-Api-Key": "key-1"});
+    string sameText = check same.getTextPayload();
+    test:assertTrue(sameText.includes("authorization: Bearer abc") && sameText.includes("x-api-key: key-1"), sameText);
+    http:Response other = check call("GET", UP + "/to?status=307&location=http%3A%2F%2Flocalhost%3A9301%2Fecho", {"Authorization": "Bearer abc", "X-Api-Key": "key-1"});
+    string otherText = check other.getTextPayload();
+    test:assertTrue(otherText.startsWith("GET /echo\n"), otherText);
+    test:assertFalse(otherText.includes("authorization") || otherText.includes("x-api-key"), otherText);
 }
 
 @test:Config

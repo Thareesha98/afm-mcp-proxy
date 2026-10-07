@@ -217,13 +217,10 @@ function testExpectDoesNotDelayTheRequest() returns error? {
 }
 
 @test:Config
-function testStatusesAreRelayedAndRedirectsAreNotFollowed() returns error? {
+function testStatusesAreRelayed() returns error? {
     http:Response missing = check sendTo(localTarget("/missing"));
     test:assertEquals(missing.statusCode, 404);
     test:assertEquals(check missing.getTextPayload(), "nothing here");
-    http:Response redirect = check sendTo(localTarget("/redirect"));
-    test:assertEquals(redirect.statusCode, 302);
-    test:assertEquals(check redirect.getHeader("Location"), "/echo");
 }
 
 @test:Config
