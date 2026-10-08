@@ -33,16 +33,12 @@ function isAllowedOrigin(string[] allowedOrigins, string? origin) returns boolea
     return origin is string && allowedOrigins.indexOf(origin) is int;
 }
 
-function checkRequest(string method, string? origin, string? target, string[] allowedOrigins,
-        boolean allowLoopback) returns Target|RequestError {
+function checkRequest(string method, string? target, boolean allowLoopback, int[] ports) returns Target|RequestError {
     if method != "GET" && method != "POST" && method != "DELETE" {
         return error RequestError("Method not allowed", status = 405);
-    }
-    if !isAllowedOrigin(allowedOrigins, origin) {
-        return error RequestError("Origin not allowed", status = 403);
     }
     if target is () || target == "" {
         return error RequestError("Missing target URL", status = 400);
     }
-    return checkTarget(target, allowLoopback);
+    return checkTarget(target, allowLoopback, ports);
 }

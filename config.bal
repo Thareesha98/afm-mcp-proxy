@@ -9,11 +9,13 @@ configurable int burst = 300;
 configurable int maxBodyBytes = 1000000;
 configurable int maxRequestSeconds = 120;
 configurable int statsIntervalSeconds = 60;
+configurable string allowedPorts = "443";
 
 const int MAX_BODY_BYTES_LIMIT = 1073741824;
 
 final int transportLimit = check transportBodyLimit(maxBodyBytes);
 final string[] origins = check parseOrigins(allowedOrigins);
+final int[] targetPorts = check parsePorts(allowedPorts);
 
 function init() returns error? {
     if port < 1 || port > 65535 {
@@ -72,6 +74,21 @@ function parseOrigins(string csv) returns string[]|error {
     }
     if result.length() == 0 {
         return error("allowedOrigins must contain at least one origin");
+    }
+    return result;
+}
+
+function parsePorts(string csv) returns int[]|error {
+    int[] result = [];
+    foreach string item in parseList(csv) {
+        int|error value = int:fromString(item);
+        if value is error || value < 1 || value > 65535 {
+            return error(string `invalid port: ${item}`);
+        }
+        result.push(value);
+    }
+    if result.length() == 0 {
+        return error("allowedPorts must contain at least one port");
     }
     return result;
 }

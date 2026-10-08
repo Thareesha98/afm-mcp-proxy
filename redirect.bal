@@ -1,6 +1,6 @@
 import ballerina/http;
 
-const int MAX_REDIRECTS = 5;
+const int MAX_REDIRECTS = 3;
 
 final int[] redirectStatuses = [301, 302, 303, 307, 308];
 final string[] bodyHeaders = ["content-type", "content-encoding", "content-language", "content-location"];

@@ -1,5 +1,7 @@
 import ballerina/test;
 
+final int[] TEST_PORTS = [80, 443, 3000, 8443];
+
 function assertStatus(Target|RequestError? result, int status) {
     if result is RequestError {
         test:assertEquals(result.detail().status, status);
@@ -21,6 +23,14 @@ function testPublicAddressesAreAllowed() {
         "192.0.1.1",
         "198.17.255.255",
         "198.20.0.1",
+        "168.63.129.15",
+        "168.63.129.17",
+        "168.63.128.16",
+        "168.63.130.16",
+        "168.62.129.16",
+        "168.64.129.16",
+        "167.63.129.16",
+        "169.63.129.16",
         "2606:4700:10:0:0:0:ac42:93f3",
         "2a00:1450:4001:0:0:0:0:200e",
         "2001:200:0:0:0:0:0:1",
@@ -42,6 +52,7 @@ function testNonPublicAddressesAreBlocked() {
         "100.127.255.255",
         "127.0.0.1",
         "127.1.2.3",
+        "168.63.129.16",
         "169.254.169.254",
         "172.16.0.1",
         "172.31.255.255",
@@ -163,22 +174,22 @@ function testInvalidUrlsAreRejected() {
         "https://example.com/a\u{0}b"
     ];
     foreach string url in urls {
-        assertStatus(checkTarget(url, false), 400);
+        assertStatus(checkTarget(url, false, TEST_PORTS), 400);
     }
 }
 
 @test:Config
 function testOnlyHttpAndHttpsAreAllowed() {
-    assertStatus(checkTarget("ftp://example.com", true), 400);
-    assertStatus(checkTarget("file://localhost/etc/passwd", true), 400);
-    assertStatus(checkTarget("gopher://example.com", false), 400);
+    assertStatus(checkTarget("ftp://example.com", true, TEST_PORTS), 400);
+    assertStatus(checkTarget("file://localhost/etc/passwd", true, TEST_PORTS), 400);
+    assertStatus(checkTarget("gopher://example.com", false, TEST_PORTS), 400);
 }
 
 @test:Config
 function testPlainHttpNeedsTheDevFlag() {
-    assertStatus(checkTarget("http://8.8.8.8", false), 400);
-    assertStatus(checkTarget("http://example.com", false), 400);
-    test:assertTrue(checkTarget("http://8.8.8.8", true) is Target);
+    assertStatus(checkTarget("http://8.8.8.8", false, TEST_PORTS), 400);
+    assertStatus(checkTarget("http://example.com", false, TEST_PORTS), 400);
+    test:assertTrue(checkTarget("http://8.8.8.8", true, TEST_PORTS) is Target);
 }
 
 @test:Config
@@ -193,43 +204,69 @@ function testPrivateTargetsAreRejected() {
         "https://192.168.0.1:8443/mcp"
     ];
     foreach string url in urls {
-        assertStatus(checkTarget(url, false), 403);
+        assertStatus(checkTarget(url, false, TEST_PORTS), 403);
+    }
+}
+
+@test:Config
+function testOnlyListedPortsAreAllowed() returns error? {
+    test:assertEquals((check checkTarget("https://8.8.8.8", false, [443])).port, 443);
+    test:assertEquals((check checkTarget("https://8.8.8.8:443", false, [443])).port, 443);
+    test:assertEquals((check checkTarget("https://8.8.8.8:8443", false, [443, 8443])).port, 8443);
+    foreach string port in ["22", "80", "444", "8443", "65535"] {
+        assertStatus(checkTarget("https://8.8.8.8:" + port, false, [443]), 403);
+    }
+}
+
+@test:Config
+function testThePortRuleAlsoHoldsInDevMode() returns error? {
+    assertStatus(checkTarget("http://127.0.0.1:3000/mcp", true, [443]), 403);
+    assertStatus(checkTarget("http://8.8.8.8", true, [443]), 403);
+    test:assertTrue(checkTarget("http://127.0.0.1:3000/mcp", true, [3000]) is Target);
+}
+
+@test:Config
+function testARefusedPortSaysSoAndNeverTriggersDns() {
+    Target|RequestError result = checkTarget("https://no-such-host.invalid:22", false, [443]);
+    assertStatus(result, 403);
+    if result is RequestError {
+        test:assertEquals(result.message(), "Target port is not allowed");
     }
 }
 
 @test:Config
 function testUnresolvableTargetsAreRejected() {
-    assertStatus(checkTarget("https://0x7f.1", false), 502);
-    assertStatus(checkTarget("https://no-such-host.invalid", false), 502);
+    assertStatus(checkTarget("https://0x7f.1", false, TEST_PORTS), 502);
+    assertStatus(checkTarget("https://no-such-host.invalid", false, TEST_PORTS), 502);
 }
 
 @test:Config
 function testPublicTargetIsParsed() returns error? {
-    Target target = check checkTarget("https://8.8.8.8:8443/mcp?x=1#frag", false);
+    Target target = check checkTarget("https://8.8.8.8:8443/mcp?x=1#frag", false, TEST_PORTS);
     test:assertEquals(target, {scheme: "https", host: "8.8.8.8", port: 8443, pathAndQuery: "/mcp?x=1", addresses: ["8.8.8.8"]});
 }
 
 @test:Config
 function testDefaultPortsAndPaths() returns error? {
-    Target target = check checkTarget("HTTPS://8.8.8.8", false);
+    Target target = check checkTarget("HTTPS://8.8.8.8", false, TEST_PORTS);
     test:assertEquals(target, {scheme: "https", host: "8.8.8.8", port: 443, pathAndQuery: "/", addresses: ["8.8.8.8"]});
-    target = check checkTarget("https://8.8.8.8?x=1", false);
+    target = check checkTarget("https://8.8.8.8?x=1", false, TEST_PORTS);
     test:assertEquals(target.pathAndQuery, "/?x=1");
-    target = check checkTarget("https://8.8.8.8/mcp", false);
+    target = check checkTarget("https://8.8.8.8/mcp", false, TEST_PORTS);
     test:assertEquals([target.port, target.pathAndQuery], [443, "/mcp"]);
-    target = check checkTarget("https://8.8.8.8:8443", false);
+    target = check checkTarget("https://8.8.8.8:8443", false, TEST_PORTS);
     test:assertEquals([target.port, target.pathAndQuery], [8443, "/"]);
-    target = check checkTarget("http://8.8.8.8", true);
+    target = check checkTarget("http://8.8.8.8", true, TEST_PORTS);
     test:assertEquals(target.port, 80);
 }
 
 @test:Config
 function testDevFlagAllowsLoopbackOnly() returns error? {
-    Target target = check checkTarget("http://127.0.0.1:3000/mcp", true);
+    Target target = check checkTarget("http://127.0.0.1:3000/mcp", true, TEST_PORTS);
     test:assertEquals(target, {scheme: "http", host: "127.0.0.1", port: 3000, pathAndQuery: "/mcp", addresses: ["127.0.0.1"]});
-    test:assertTrue(checkTarget("http://localhost:3000", true) is Target);
-    assertStatus(checkTarget("http://10.0.0.1", true), 403);
-    assertStatus(checkTarget("https://169.254.169.254", true), 403);
+    test:assertTrue(checkTarget("http://localhost:3000", true, TEST_PORTS) is Target);
+    assertStatus(checkTarget("http://10.0.0.1", true, TEST_PORTS), 403);
+    assertStatus(checkTarget("https://169.254.169.254", true, TEST_PORTS), 403);
 }
 
 @test:Config
@@ -311,7 +348,7 @@ function testIllegalCharactersAreEscapedInTheRequestTarget() {
         "?x=1": "/?x=1"
     };
     foreach [string, string] [input, output] in expected.entries() {
-        Target|RequestError target = checkTarget("https://8.8.8.8" + input, false);
+        Target|RequestError target = checkTarget("https://8.8.8.8" + input, false, TEST_PORTS);
         if target is Target {
             test:assertEquals(target.pathAndQuery, output, input);
         } else {

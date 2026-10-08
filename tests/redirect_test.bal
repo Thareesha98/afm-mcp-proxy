@@ -94,9 +94,9 @@ function testLocationFormsAreResolvedAgainstTheCurrentUrl() returns error? {
 }
 
 @test:Config
-function testUpToFiveRedirectsAreFollowed() returns error? {
-    test:assertTrue((check echoOf("/chain/5")).startsWith("GET /chain/0\n"));
-    assertForwardStatus(sendTo(localTarget("/chain/6")), 502);
+function testUpToThreeRedirectsAreFollowed() returns error? {
+    test:assertTrue((check echoOf("/chain/3")).startsWith("GET /chain/0\n"));
+    assertForwardStatus(sendTo(localTarget("/chain/4")), 502);
     assertForwardStatus(sendTo(localTarget("/loop")), 502);
 }
 

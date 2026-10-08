@@ -53,6 +53,19 @@ function testParseOriginsNormalizesCaseAndDefaultPorts() returns error? {
 }
 
 @test:Config
+function testParsePortsReadsAList() returns error? {
+    test:assertEquals(check parsePorts("443"), [443]);
+    test:assertEquals(check parsePorts(" 443, 8443 ,,1,65535"), [443, 8443, 1, 65535]);
+}
+
+@test:Config
+function testParsePortsRejectsWhatIsNotAPort() {
+    foreach string text in ["", " , ", "abc", "443,x", "0", "65536", "-1", "4 43", "443.5", "99999999999999999999"] {
+        test:assertTrue(parsePorts(text) is error, text);
+    }
+}
+
+@test:Config
 function testTransportBodyLimitIsTwiceTheLimit() returns error? {
     test:assertEquals(check transportBodyLimit(1), 2);
     test:assertEquals(check transportBodyLimit(1000000), 2000000);

@@ -45,8 +45,8 @@ function testCorsFixedHeaders() {
     test:assertEquals(headers["Vary"], "Origin, Access-Control-Request-Headers");
 }
 
-function gate(string method, string? origin, string? target) returns Target|RequestError {
-    return checkRequest(method, origin, target, ORIGINS, false);
+function gate(string method, string? target) returns Target|RequestError {
+    return checkRequest(method, target, false, [443]);
 }
 
 function assertRequestStatus(Target|RequestError result, int status) {
@@ -60,10 +60,10 @@ function assertRequestStatus(Target|RequestError result, int status) {
 @test:Config
 function testOnlyGetPostAndDeleteAreAllowed() {
     foreach string method in ["PATCH", "PUT", "HEAD", "TRACE", "CONNECT", "get", ""] {
-        assertRequestStatus(gate(method, "https://app.example.com", "https://8.8.8.8"), 405);
+        assertRequestStatus(gate(method, "https://8.8.8.8"), 405);
     }
     foreach string method in ["GET", "POST", "DELETE"] {
-        test:assertTrue(gate(method, "https://app.example.com", "https://8.8.8.8") is Target, method);
+        test:assertTrue(gate(method, "https://8.8.8.8") is Target, method);
     }
 }
 
@@ -81,38 +81,34 @@ function testOriginMustMatchExactly() {
         "HTTPS://APP.EXAMPLE.COM",
         "https://evil.com"
     ] {
-        assertRequestStatus(gate("GET", origin, "https://8.8.8.8"), 403);
+        test:assertFalse(isAllowedOrigin(ORIGINS, origin), origin.toString());
     }
 }
 
 @test:Config
 function testBothConfiguredOriginsAreAccepted() {
-    test:assertTrue(gate("POST", "https://app.example.com", "https://8.8.8.8/mcp") is Target);
-    test:assertTrue(gate("POST", "http://localhost:5173", "https://8.8.8.8/mcp") is Target);
+    test:assertTrue(isAllowedOrigin(ORIGINS, "https://app.example.com"));
+    test:assertTrue(isAllowedOrigin(ORIGINS, "http://localhost:5173"));
 }
 
 @test:Config
 function testTargetIsRequired() {
-    assertRequestStatus(gate("GET", "https://app.example.com", ()), 400);
-    assertRequestStatus(gate("GET", "https://app.example.com", ""), 400);
+    assertRequestStatus(gate("GET", ()), 400);
+    assertRequestStatus(gate("GET", ""), 400);
 }
 
 @test:Config
 function testChecksRunInOrder() {
-    assertRequestStatus(gate("PATCH", "https://evil.com", ()), 405);
-    assertRequestStatus(gate("GET", "https://evil.com", ()), 403);
-    assertRequestStatus(gate("GET", "https://evil.com", "not a url"), 403);
-}
-
-@test:Config
-function testUnauthorizedOriginNeverTriggersDns() {
-    assertRequestStatus(gate("GET", "https://evil.com", "https://no-such-host.invalid"), 403);
-    assertRequestStatus(gate("GET", "https://app.example.com", "https://no-such-host.invalid"), 502);
+    assertRequestStatus(gate("PATCH", ()), 405);
+    assertRequestStatus(gate("GET", ()), 400);
+    assertRequestStatus(gate("GET", "not a url"), 400);
+    assertRequestStatus(gate("GET", "https://no-such-host.invalid"), 502);
 }
 
 @test:Config
 function testSettingsReachTheTargetCheck() {
     string target = "http://127.0.0.1:3000/mcp";
-    assertRequestStatus(checkRequest("POST", "http://localhost:5173", target, ORIGINS, false), 400);
-    test:assertTrue(checkRequest("POST", "http://localhost:5173", target, ORIGINS, true) is Target);
+    assertRequestStatus(checkRequest("POST", target, false, [3000]), 400);
+    test:assertTrue(checkRequest("POST", target, true, [3000]) is Target);
+    assertRequestStatus(checkRequest("POST", target, true, [443]), 403);
 }

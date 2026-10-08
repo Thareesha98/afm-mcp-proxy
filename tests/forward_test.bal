@@ -69,6 +69,13 @@ function testRequestHeadersAreFiltered() {
         "X-Forwarded-For",
         "X-Forwarded-Host",
         "X-Forwarded-Proto",
+        "X-Choreo-Api-Id",
+        "X-Choreo-Correlation-Id",
+        "X-Correlation-Id",
+        "X-Envoy-Expected-Rq-Timeout-Ms",
+        "X-Envoy-External-Address",
+        "X-Envoy-Internal",
+        "X-Trace-Key",
         "Host"
     ] {
         req.setHeader(name, "drop");
@@ -98,9 +105,28 @@ function testRequestHeadersAreFiltered() {
         "X-Amzn-Trace-Id",
         "X-Forwarded-For",
         "X-Forwarded-Host",
-        "X-Forwarded-Proto"
+        "X-Forwarded-Proto",
+        "X-Choreo-Api-Id",
+        "X-Choreo-Correlation-Id",
+        "X-Correlation-Id",
+        "X-Envoy-Expected-Rq-Timeout-Ms",
+        "X-Envoy-External-Address",
+        "X-Envoy-Internal",
+        "X-Trace-Key"
     ] {
         test:assertFalse(hasHeader(headers, name), name);
+    }
+}
+
+@test:Config
+function testOtherHeadersThatOnlyLookLikeChoreoOnesAreKept() {
+    http:Request req = new;
+    foreach string name in ["X-Choreography", "X-Envoyer", "X-Correlation", "X-Trace", "X-Trace-Keys"] {
+        req.setHeader(name, "keep");
+    }
+    map<string|string[]> headers = requestHeaders(req, publicTarget);
+    foreach string name in ["X-Choreography", "X-Envoyer", "X-Correlation", "X-Trace", "X-Trace-Keys"] {
+        test:assertTrue(hasHeader(headers, name), name);
     }
 }
 
@@ -309,14 +335,14 @@ function testHeadersNamedByTheResponseConnectionHeaderAreRemoved() returns error
 
 @test:Config {groups: ["network"]}
 function testHttpsRequestIsPinnedToTheValidatedAddress() returns error? {
-    Target target = check checkTarget("https://example.com/", false);
+    Target target = check checkTarget("https://example.com/", false, TEST_PORTS);
     http:Response res = check forward(target, "GET", requestHeaders(new, target), [], 20);
     test:assertEquals(res.statusCode, 200);
 }
 
 @test:Config {groups: ["network"]}
 function testHttpsCertificateMustMatchTheHostname() returns error? {
-    Target real = check checkTarget("https://example.com/", false);
+    Target real = check checkTarget("https://example.com/", false, TEST_PORTS);
     Target wrongName = {scheme: "https", host: "wrong.host.badssl.com", port: 443, pathAndQuery: "/", addresses: real.addresses};
     assertForwardStatus(forward(wrongName, "GET", requestHeaders(new, wrongName), [], 20), 502);
 }

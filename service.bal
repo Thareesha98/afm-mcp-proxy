@@ -31,6 +31,9 @@ function relay(http:Request req) returns http:Response {
         preflight.statusCode = 204;
         return preflight;
     }
+    if !isAllowedOrigin(origins, headerValue(req, "origin")) {
+        return errorResponse(403, "Origin not allowed");
+    }
     if !limiter.take() {
         http:Response limited = errorResponse(429, "Too many requests");
         limited.setHeader("Retry-After", "60");
@@ -40,7 +43,7 @@ function relay(http:Request req) returns http:Response {
     if requested is error {
         return errorResponse(400, "Invalid target URL");
     }
-    Target|RequestError target = checkRequest(req.method, headerValue(req, "origin"), requested, origins, allowLoopback);
+    Target|RequestError target = checkRequest(req.method, requested, allowLoopback, targetPorts);
     if target is RequestError {
         return failure(target);
     }

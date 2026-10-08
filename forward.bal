@@ -26,8 +26,12 @@ final string[] blockedRequestHeaders = [
     "x-client-ip",
     "client-ip",
     "x-amzn-trace-id",
-    "accept-encoding"
+    "accept-encoding",
+    "x-correlation-id",
+    "x-trace-key"
 ];
+
+final string[] blockedRequestPrefixes = ["x-forwarded-", "x-envoy-", "x-choreo-"];
 
 final string[] blockedResponseHeaders = [
     "connection",
@@ -60,7 +64,7 @@ function requestHeaders(http:Request req, Target target) returns map<string|stri
         string lower = name.toLowerAscii();
         string[]|error values = req.getHeaders(name);
         if values is string[] && blockedRequestHeaders.indexOf(lower) is () && named.indexOf(lower) is ()
-                && !lower.startsWith("x-forwarded-") {
+                && blockedRequestPrefixes.every(prefix => !lower.startsWith(prefix)) {
             headers[name] = values;
         }
     }
@@ -91,7 +95,7 @@ function forward(Target target, string method, map<string|string[]> headers, byt
         if redirects == MAX_REDIRECTS {
             return error RequestError("Too many redirects", status = 502);
         }
-        Target|RequestError next = checkTarget(resolveLocation(current, location), allowLoopback);
+        Target|RequestError next = checkTarget(resolveLocation(current, location), allowLoopback, targetPorts);
         if next is RequestError {
             return error RequestError("Redirect target is not allowed", status = 502);
         }

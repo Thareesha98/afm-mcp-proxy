@@ -12,7 +12,7 @@ type Target record {|
     string[] addresses;
 |};
 
-function checkTarget(string rawUrl, boolean allowLoopback) returns Target|RequestError {
+function checkTarget(string rawUrl, boolean allowLoopback, int[] ports) returns Target|RequestError {
     regexp:Groups? groups = re `([a-zA-Z][a-zA-Z0-9+.\-]*)://([^/:?#@\\\s\[\]]+)(:\d+|)([/?][^#\s\p{Cc}]*|)(?:#.*)?`
         .fullMatchGroups(rawUrl);
     if groups is () {
@@ -34,6 +34,9 @@ function checkTarget(string rawUrl, boolean allowLoopback) returns Target|Reques
             return error RequestError("Invalid target port", status = 400);
         }
         targetPort = parsed;
+    }
+    if ports.indexOf(targetPort) is () {
+        return error RequestError("Target port is not allowed", status = 403);
     }
 
     string host = groupText(groups, 2).toLowerAscii();
@@ -96,8 +99,10 @@ function isBlockedIpv4(string ip, boolean allowLoopback) returns boolean {
     int a = parts[0];
     int b = parts[1];
     int c = parts[2];
+    int d = parts[3];
     return a == 0 || a == 10 || (a == 127 && !allowLoopback) || a >= 224
         || (a == 100 && b >= 64 && b <= 127)
+        || (a == 168 && b == 63 && c == 129 && d == 16)
         || (a == 169 && b == 254)
         || (a == 172 && b >= 16 && b <= 31)
         || (a == 192 && b == 168)

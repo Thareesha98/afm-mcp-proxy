@@ -77,6 +77,34 @@ function testMissingOriginIsRejected() returns error? {
 }
 
 @test:Config
+function testWrongOriginsAreRefusedBeforeTheRateLimit() returns error? {
+    future<http:Response|error>[] calls = [];
+    foreach int i in 0 ..< 150 {
+        future<http:Response|error> pending = start call("GET", UP + "/echo", {"Origin": "https://evil.com"});
+        calls.push(pending);
+    }
+    foreach future<http:Response|error> pending in calls {
+        http:Response|error res = check wait pending;
+        test:assertEquals(res is http:Response ? res.statusCode : 0, 403);
+    }
+}
+
+@test:Config
+function testWrongOriginIsRefusedBeforeDns() returns error? {
+    http:Response res = check call("GET", "https://no-such-host.invalid/", {"Origin": "https://evil.com"});
+    check assertError(res, 403, "Origin not allowed");
+}
+
+@test:Config
+function testPortsOutsideTheListAreRefusedAlsoOnARedirect() returns error? {
+    http:Response direct = check call("GET", "http://127.0.0.1:9399/echo");
+    check assertError(direct, 403, "Target port is not allowed");
+    test:assertEquals(headerOf(direct, "Access-Control-Allow-Origin"), ORIGIN);
+    http:Response hop = check call("GET", UP + "/to?status=302&location=http%3A%2F%2F127.0.0.1%3A9399%2Fecho");
+    check assertError(hop, 502, "Redirect target is not allowed");
+}
+
+@test:Config
 function testBadTargetsAreRejected() returns error? {
     check assertError(check call("GET", ()), 400, "Missing target URL");
     check assertError(check call("GET", "not a url"), 400, "Invalid target URL");
