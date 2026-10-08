@@ -107,6 +107,13 @@ else
     fail "4b a plain http target got HTTP $STATUS" "Body: $(head -c 200 "$BODY")"
 fi
 
+call GET "https://example.com:8443/" -H "Origin: $APP_ORIGIN"
+if [ "$STATUS" = "403" ] && body_has "Target port is not allowed"; then
+    pass "4c a port outside allowedPorts is refused (403)"
+else
+    fail "4c a port outside allowedPorts got HTTP $STATUS" "The deployed proxy may be an older build without the port rule. Body: $(head -c 200 "$BODY")"
+fi
+
 INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1"}}}'
 call POST "https://mcp.deepwiki.com/mcp" -H "Origin: $APP_ORIGIN" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" --data "$INIT"
 if [ "$STATUS" = "200" ] && body_has "protocolVersion"; then

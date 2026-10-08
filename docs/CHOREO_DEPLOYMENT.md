@@ -90,7 +90,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
    |---|---|---|
    | `allowedOrigins` | your app origin, for example `https://app.example.com`. Several origins are comma-separated. | Without it only `http://localhost:5173` is allowed, and your app gets 403. No `*`, no path. |
    | `maxRequestSeconds` | `50` | The gateway cuts a request at 1 minute by default. With 50 the proxy answers first, and its error carries CORS headers so the browser app can read it. Raise both together if you raise the gateway timeout. |
-   | everything else | leave the default | `port` stays 8787 and must always match `.choreo/component.yaml`. `allowLoopback` must stay `false`. `requestsPerMinute` 1200, `burst` 300 and `maxBodyBytes` 1000000 are fine for now. |
+   | everything else | leave the default | `port` stays 8787 and must always match `.choreo/component.yaml`. `allowLoopback` must stay `false`. `allowedPorts` stays `443` unless an MCP server you need uses another https port. `requestsPerMinute` 1200, `burst` 300 and `maxBodyBytes` 1000000 are fine for now. |
 
    Optional but recommended, after the first successful deploy: on the **Deploy** page click **Manage Configs and Secrets** in the environment card, expand **Environment Variables**, click **+ Add a Configuration**, add `BAL_CONFIG_VAR_BALLERINA_HTTP_MAXBACKPRESSURESTALLTIME` with the value `10`, then **Save and Deploy**. It makes an abandoned transfer free its connection in seconds instead of minutes. Spell the name exactly, because a wrong `BAL_CONFIG_VAR_` name stops the proxy from starting. Check the **Application** log again afterwards for the `listening` line.
 
@@ -129,7 +129,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
 | Status | Body | Cause |
 |---|---|---|
 | 400 | `Missing target URL` / `Invalid target URL` / `Plain http targets are not allowed; use https` / `Unsupported protocol` / `Invalid target port` / `Target host did not resolve` / `Could not read request body` | the request itself |
-| 403 | `Origin not allowed` / `Target resolves to a blocked address range` | origin not in `allowedOrigins`, or a private target |
+| 403 | `Origin not allowed` / `Target resolves to a blocked address range` / `Target port is not allowed` | origin not in `allowedOrigins`, a private target, or a port not in `allowedPorts` |
 | 405 | `Method not allowed` | anything but GET, POST, DELETE, OPTIONS |
 | 413 | `Request body too large` | body over `maxBodyBytes` |
 | 429 | `Too many requests` (with `Retry-After: 60`) | the proxy's own limit |
@@ -153,6 +153,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
 - Rate limiting: configure the gateway limit (environment card → view icon of the endpoint → settings icon → **Manage** → **Rate Limiting**) and test the four things listed in the project notes: the 429 after N requests, a second client sharing the count, whether the preflight counts, and whether the 429 has CORS headers.
 - Production: **Promote** from the **Deploy** page, set `allowedOrigins` for production, and repeat steps 5.4 and 6 there, because settings are per environment.
 - To take it down: **Deploy** page, undeploy. Nothing else depends on it until you point the app at it.
+- To stop all use quickly while keeping the endpoint (for example when the counts show abuse): on the **Deploy** page open **Manage Configs and Secrets**, set `allowedOrigins` to a made-up origin that only you know (for example `https://off-` plus random letters plus `.invalid`), then **Save and Deploy**. Every request then gets 403 and browsers cannot read the preflight answer. Put the real origin back the same way. Anyone who can send an `Origin` header can use the proxy; see "Who can use the proxy" in the README.
 
 ## 10. Watching the proxy
 
