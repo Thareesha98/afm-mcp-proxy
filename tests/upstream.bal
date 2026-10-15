@@ -109,6 +109,7 @@ service / on upstreamListener {
                 res.setHeader("Access-Control-Allow-Origin", "*");
                 res.setHeader("Access-Control-Allow-Credentials", "true");
                 res.setHeader("X-Custom", "yes");
+                res.setHeader("X-Choreo-Correlation-Id", "afm-evil");
                 res.setHeader("Vary", "Accept-Encoding");
                 res.setHeader("WWW-Authenticate", "Bearer realm=\"mcp\"");
             }

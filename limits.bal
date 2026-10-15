@@ -6,7 +6,7 @@ isolated class RateLimiter {
     private decimal tokens;
     private decimal? updatedAt = ();
 
-    function init(int requestsPerMinute, int burst) {
+    isolated function init(int requestsPerMinute, int burst) {
         self.perSecond = <decimal>requestsPerMinute / 60;
         self.burst = <decimal>burst;
         self.tokens = self.burst;

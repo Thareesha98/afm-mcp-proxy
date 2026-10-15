@@ -135,7 +135,7 @@ function testResponseHeadersAreCleanedAndCorsIsOurs() returns error? {
     test:assertEquals(headerOf(res, "X-Custom"), "yes");
     test:assertEquals(headerOf(res, "WWW-Authenticate"), "Bearer realm=\"mcp\"");
     test:assertEquals(res.getHeaders("Access-Control-Allow-Origin"), [ORIGIN]);
-    test:assertEquals(headerOf(res, "Access-Control-Expose-Headers"), "mcp-session-id, www-authenticate");
+    test:assertEquals(headerOf(res, "Access-Control-Expose-Headers"), "mcp-session-id, www-authenticate, x-choreo-correlation-id");
 }
 
 @test:Config
@@ -290,7 +290,7 @@ function testOurOwnErrorsAreNeverCached() returns error? {
     ] {
         test:assertEquals(headerOf(res, "Cache-Control"), "no-store");
     }
-    test:assertEquals(headerOf(check call("GET", UP + "/echo"), "Cache-Control"), ());
+    test:assertEquals(headerOf(check call("GET", UP + "/echo", check knownSession()), "Cache-Control"), ());
 }
 
 @test:Config
@@ -383,7 +383,7 @@ function testResponsesAreNeverCompressed() returns error? {
 @test:Config
 function testCacheableStreamsAreStillStreamedLive() returns error? {
     decimal started = time:monotonicNow();
-    http:Response res = check call("GET", UP + "/cacheable");
+    http:Response res = check call("GET", UP + "/cacheable", check knownSession());
     test:assertTrue((headerOf(res, "Cache-Control") ?: "").includes("max-age=60"), headerOf(res, "Cache-Control") ?: "no header");
     stream<http:SseEvent, error?> events = check res.getSseEventStream();
     record {|http:SseEvent value;|}? first = check events.next();
@@ -393,4 +393,122 @@ function testCacheableStreamsAreStillStreamedLive() returns error? {
     }
     test:assertEquals(first.value.data, "event 1");
     test:assertTrue(firstAfter < 0.5d, "first event after " + firstAfter.toString());
+}
+
+function sessionOf(http:Response res) returns string {
+    return headerOf(res, SESSION_HEADER) ?: "";
+}
+
+function withSession(string id) returns map<string|string[]> {
+    return {[SESSION_HEADER]: id};
+}
+
+function knownSession() returns map<string|string[]>|error {
+    return withSession(sessionOf(check call("GET", UP + "/echo")));
+}
+
+@test:Config
+function testASessionIsIssuedOnFirstContactAndRecognisedAfterwards() returns error? {
+    http:Response first = check call("GET", UP + "/echo");
+    string id = sessionOf(first);
+    test:assertTrue(isSessionId(id), id);
+    test:assertTrue((headerOf(first, "Access-Control-Expose-Headers") ?: "").includes(SESSION_HEADER));
+    http:Response second = check call("GET", UP + "/echo", withSession(id));
+    test:assertEquals(second.statusCode, 200);
+    test:assertEquals(headerOf(second, SESSION_HEADER), ());
+}
+
+@test:Config
+function testTheSessionHeaderNeverReachesTheTarget() returns error? {
+    http:Response first = check call("GET", UP + "/echo");
+    test:assertFalse((check first.getTextPayload()).toLowerAscii().includes(SESSION_HEADER));
+    http:Response known = check call("GET", UP + "/echo", withSession(sessionOf(first)));
+    test:assertFalse((check known.getTextPayload()).toLowerAscii().includes(SESSION_HEADER));
+}
+
+@test:Config
+function testForgedAndChoreoStyleIdsAreReplaced() returns error? {
+    string forged = forgedId();
+    foreach string presented in [forged, "6e68f0ade3bfc1c93129461af0baa4c5", "afm-nonsense", "".padEnd(1000, "z")] {
+        http:Response res = check call("GET", UP + "/echo", withSession(presented));
+        string replacement = sessionOf(res);
+        test:assertTrue(isSessionId(replacement) && replacement != presented, presented);
+    }
+}
+
+@test:Config
+function testATargetCannotSetTheSessionOfTheCaller() returns error? {
+    http:Response first = check call("GET", UP + "/headers");
+    string id = sessionOf(first);
+    test:assertTrue(isSessionId(id) && id != "afm-evil", id);
+    http:Response known = check call("GET", UP + "/headers", withSession(id));
+    test:assertEquals(headerOf(known, SESSION_HEADER), ());
+}
+
+@test:Config
+function testAResponseThatIssuesASessionIsNeverCached() returns error? {
+    http:Response issuing = check call("GET", UP + "/cacheable");
+    test:assertTrue(isSessionId(sessionOf(issuing)));
+    test:assertEquals(headerOf(issuing, "Cache-Control"), "no-store");
+    http:Response known = check call("GET", UP + "/cacheable", withSession(sessionOf(issuing)));
+    test:assertEquals(headerOf(known, SESSION_HEADER), ());
+    test:assertNotEquals(headerOf(known, "Cache-Control"), "no-store");
+}
+
+@test:Config
+function testOneNoisySessionIsLimitedWhileAnotherIsNot() returns error? {
+    string noisy = sessionOf(check call("GET", UP + "/echo"));
+    string quiet = sessionOf(check call("GET", UP + "/echo"));
+    future<http:Response|error>[] calls = [];
+    foreach int i in 0 ..< 80 {
+        future<http:Response|error> pending = start call("GET", UP + "/echo", withSession(noisy));
+        calls.push(pending);
+    }
+    int ok = 0;
+    http:Response? refused = ();
+    foreach future<http:Response|error> pending in calls {
+        http:Response|error res = check wait pending;
+        if res is http:Response && res.statusCode == 200 {
+            ok += 1;
+        } else if res is http:Response && res.statusCode == 429 {
+            refused = res;
+        }
+    }
+    test:assertTrue(ok >= 25 && ok <= 45, "served " + ok.toString());
+    if refused is () {
+        test:assertFail("the noisy session was never limited");
+    }
+    check assertError(refused, 429, "Too many requests from this session");
+    test:assertEquals(headerOf(refused, "Retry-After"), "60");
+    test:assertEquals(headerOf(refused, "Access-Control-Allow-Origin"), ORIGIN);
+    http:Response other = check call("GET", UP + "/echo", withSession(quiet));
+    test:assertEquals(other.statusCode, 200);
+    runtime:sleep(1);
+}
+
+@test:Config
+function testNothingIsIssuedForAWrongOriginOrAPreflight() returns error? {
+    _ = stats.take();
+    int held = sessions.size();
+    foreach int i in 0 ..< 3 {
+        http:Response wrong = check call("GET", UP + "/echo", {"Origin": "https://evil.com"});
+        test:assertEquals(wrong.statusCode, 403);
+        test:assertEquals(headerOf(wrong, SESSION_HEADER), ());
+    }
+    http:Response preflight = check call("OPTIONS", ());
+    test:assertEquals(headerOf(preflight, SESSION_HEADER), ());
+    Window window = stats.take();
+    test:assertEquals(window.newSessions, 0);
+    test:assertEquals(sessions.size(), held);
+}
+
+@test:Config
+function testIssuedSessionsAreCountedInTheStats() returns error? {
+    _ = stats.take();
+    _ = check call("GET", UP + "/echo");
+    string id = sessionOf(check call("GET", UP + "/echo"));
+    _ = check call("GET", UP + "/echo", withSession(id));
+    Window window = stats.take();
+    test:assertEquals(window.newSessions, 2);
+    test:assertEquals(window.requests, 3);
 }

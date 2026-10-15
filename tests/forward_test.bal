@@ -308,7 +308,8 @@ function testResponseHeadersAreCleaned() returns error? {
         "keep-alive",
         "proxy-authenticate",
         "access-control-allow-origin",
-        "access-control-allow-credentials"
+        "access-control-allow-credentials",
+        "x-choreo-correlation-id"
     ] {
         test:assertTrue(names.indexOf(name) is (), name);
     }

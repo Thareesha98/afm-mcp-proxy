@@ -20,3 +20,18 @@ function testObservabilityIsNotCompiledIn() returns error? {
     string project = check io:fileReadString("Ballerina.toml");
     test:assertFalse(project.includes("observabilityIncluded"), project);
 }
+
+@test:Config
+function testSessionDefaultsAreTheAgreedOnes() returns error? {
+    string config = check io:fileReadString("config.bal");
+    foreach string line in [
+        "configurable int sessionRequestsPerMinute = 120;",
+        "configurable int sessionBurst = 30;",
+        "configurable int newSessionsPerMinute = 12;",
+        "configurable int newSessionBurst = 6;",
+        "configurable int maxSessions = 10000;",
+        "configurable int sessionLifetimeSeconds = 1800;"
+    ] {
+        test:assertTrue(config.includes(line), line);
+    }
+}

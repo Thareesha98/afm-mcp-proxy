@@ -1,12 +1,12 @@
 import ballerina/http;
 
-const string DEFAULT_ALLOWED_HEADERS = "authorization, content-type, mcp-session-id, mcp-protocol-version, last-event-id";
+const string DEFAULT_ALLOWED_HEADERS = "authorization, content-type, mcp-session-id, mcp-protocol-version, last-event-id, x-choreo-correlation-id";
 
 function corsHeaders(string[] allowedOrigins, string? origin, string? requestedHeaders) returns map<string> {
     map<string> headers = {
         "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": requestedHeaders is () || requestedHeaders == "" ? DEFAULT_ALLOWED_HEADERS : requestedHeaders,
-        "Access-Control-Expose-Headers": "mcp-session-id, www-authenticate",
+        "Access-Control-Expose-Headers": "mcp-session-id, www-authenticate, x-choreo-correlation-id",
         "Access-Control-Max-Age": "600",
         "Vary": "Origin, Access-Control-Request-Headers"
     };

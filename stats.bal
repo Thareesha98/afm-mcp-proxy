@@ -11,6 +11,7 @@ type Window record {|
     int rateLimited;
     int upstreamErrors;
     int internalErrors;
+    int newSessions;
     int inFlight;
     int peakInFlight;
 |};
@@ -26,6 +27,7 @@ isolated function emptyWindow(int inFlight) returns Window {
         rateLimited: 0,
         upstreamErrors: 0,
         internalErrors: 0,
+        newSessions: 0,
         inFlight,
         peakInFlight: inFlight
     };
@@ -78,6 +80,12 @@ isolated class Stats {
         }
     }
 
+    isolated function issued() {
+        lock {
+            self.window.newSessions += 1;
+        }
+    }
+
     isolated function take() returns readonly & Window {
         lock {
             readonly & Window done = self.window.cloneReadOnly();
@@ -89,8 +97,8 @@ isolated class Stats {
 
 final Stats stats = new;
 
-function summaryLine(Window w) returns string {
-    return string `stats requests=${w.requests} ok=${w.ok} redirects=${w.redirects} clientErrors=${w.clientErrors} serverErrors=${w.serverErrors} forbidden=${w.forbidden} rateLimited=${w.rateLimited} upstreamErrors=${w.upstreamErrors} internalErrors=${w.internalErrors} inFlight=${w.inFlight} peakInFlight=${w.peakInFlight}`;
+function summaryLine(Window w, int sessions) returns string {
+    return string `stats requests=${w.requests} ok=${w.ok} redirects=${w.redirects} clientErrors=${w.clientErrors} serverErrors=${w.serverErrors} forbidden=${w.forbidden} rateLimited=${w.rateLimited} upstreamErrors=${w.upstreamErrors} internalErrors=${w.internalErrors} newSessions=${w.newSessions} inFlight=${w.inFlight} peakInFlight=${w.peakInFlight} sessions=${sessions}`;
 }
 
 function warnings(Window w) returns string[] {
@@ -108,7 +116,7 @@ function reportEvery(int seconds) {
     while true {
         runtime:sleep(<decimal>seconds);
         Window window = stats.take();
-        log:printInfo(summaryLine(window));
+        log:printInfo(summaryLine(window, sessions.size()));
         foreach string line in warnings(window) {
             log:printWarn(line);
         }

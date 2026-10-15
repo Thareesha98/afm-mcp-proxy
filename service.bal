@@ -1,6 +1,7 @@
 import ballerina/http;
 
 final RateLimiter limiter = new (requestsPerMinute, burst);
+final Sessions sessions = new (sessionRequestsPerMinute, sessionBurst, newSessionsPerMinute, newSessionBurst, maxSessions, sessionLifetimeSeconds);
 
 @http:ServiceConfig {
     compression: {enable: http:COMPRESSION_NEVER}
@@ -33,6 +34,23 @@ function relay(http:Request req) returns http:Response {
     }
     if !isAllowedOrigin(origins, headerValue(req, "origin")) {
         return errorResponse(403, "Origin not allowed");
+    }
+    Admission admission = sessions.admit(headerValue(req, SESSION_HEADER));
+    http:Response result = serve(req, admission.allowed);
+    string? issued = admission.issued;
+    if issued is string {
+        stats.issued();
+        result.setHeader(SESSION_HEADER, issued);
+        result.setHeader("Cache-Control", "no-store");
+    }
+    return result;
+}
+
+function serve(http:Request req, boolean sessionAllowed) returns http:Response {
+    if !sessionAllowed {
+        http:Response refused = errorResponse(429, "Too many requests from this session");
+        refused.setHeader("Retry-After", "60");
+        return refused;
     }
     if !limiter.take() {
         http:Response limited = errorResponse(429, "Too many requests");

@@ -31,7 +31,7 @@ function testCorsNeverProducesAWildcard() {
 function testCorsAllowedHeaders() {
     test:assertEquals(corsHeaders(ORIGINS, "https://app.example.com", "authorization, x-custom")["Access-Control-Allow-Headers"],
             "authorization, x-custom");
-    string defaults = "authorization, content-type, mcp-session-id, mcp-protocol-version, last-event-id";
+    string defaults = "authorization, content-type, mcp-session-id, mcp-protocol-version, last-event-id, x-choreo-correlation-id";
     test:assertEquals(corsHeaders(ORIGINS, "https://app.example.com", ())["Access-Control-Allow-Headers"], defaults);
     test:assertEquals(corsHeaders(ORIGINS, "https://app.example.com", "")["Access-Control-Allow-Headers"], defaults);
 }
@@ -40,7 +40,7 @@ function testCorsAllowedHeaders() {
 function testCorsFixedHeaders() {
     map<string> headers = corsHeaders(ORIGINS, "https://app.example.com", ());
     test:assertEquals(headers["Access-Control-Allow-Methods"], "GET, POST, DELETE, OPTIONS");
-    test:assertEquals(headers["Access-Control-Expose-Headers"], "mcp-session-id, www-authenticate");
+    test:assertEquals(headers["Access-Control-Expose-Headers"], "mcp-session-id, www-authenticate, x-choreo-correlation-id");
     test:assertEquals(headers["Access-Control-Max-Age"], "600");
     test:assertEquals(headers["Vary"], "Origin, Access-Control-Request-Headers");
 }

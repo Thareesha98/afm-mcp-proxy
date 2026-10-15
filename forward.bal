@@ -44,7 +44,8 @@ final string[] blockedResponseHeaders = [
     "transfer-encoding",
     "upgrade",
     "http2-settings",
-    "set-cookie"
+    "set-cookie",
+    "x-choreo-correlation-id"
 ];
 
 function connectionTokens(string[]|error connection) returns string[] {

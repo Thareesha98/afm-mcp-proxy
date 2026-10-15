@@ -76,7 +76,7 @@ function testTakeStartsAnEmptyWindow() {
     counters.refused(429);
     _ = counters.take();
     Window empty = counters.take();
-    test:assertEquals(empty, {requests: 0, ok: 0, redirects: 0, clientErrors: 0, serverErrors: 0, forbidden: 0, rateLimited: 0, upstreamErrors: 0, internalErrors: 0, inFlight: 0, peakInFlight: 0});
+    test:assertEquals(empty, {requests: 0, ok: 0, redirects: 0, clientErrors: 0, serverErrors: 0, forbidden: 0, rateLimited: 0, upstreamErrors: 0, internalErrors: 0, newSessions: 0, inFlight: 0, peakInFlight: 0});
 }
 
 @test:Config
@@ -100,12 +100,12 @@ function testCountersAreSafeUnderConcurrency() {
 
 @test:Config
 function testSummaryLineShowsEveryCount() {
-    Window window = {requests: 7, ok: 3, redirects: 1, clientErrors: 2, serverErrors: 1, forbidden: 4, rateLimited: 5, upstreamErrors: 6, internalErrors: 8, inFlight: 9, peakInFlight: 10};
-    test:assertEquals(summaryLine(window), "stats requests=7 ok=3 redirects=1 clientErrors=2 serverErrors=1 forbidden=4 rateLimited=5 upstreamErrors=6 internalErrors=8 inFlight=9 peakInFlight=10");
+    Window window = {requests: 7, ok: 3, redirects: 1, clientErrors: 2, serverErrors: 1, forbidden: 4, rateLimited: 5, upstreamErrors: 6, internalErrors: 8, newSessions: 11, inFlight: 9, peakInFlight: 10};
+    test:assertEquals(summaryLine(window, 12), "stats requests=7 ok=3 redirects=1 clientErrors=2 serverErrors=1 forbidden=4 rateLimited=5 upstreamErrors=6 internalErrors=8 newSessions=11 inFlight=9 peakInFlight=10 sessions=12");
 }
 
 function windowWith(int rateLimited, int internalErrors) returns Window {
-    return {requests: 50, ok: 40, redirects: 0, clientErrors: 9, serverErrors: 1, forbidden: 9, rateLimited, upstreamErrors: 3, internalErrors, inFlight: 0, peakInFlight: 4};
+    return {requests: 50, ok: 40, redirects: 0, clientErrors: 9, serverErrors: 1, forbidden: 9, rateLimited, upstreamErrors: 3, internalErrors, newSessions: 0, inFlight: 0, peakInFlight: 4};
 }
 
 @test:Config
@@ -177,4 +177,14 @@ function testAnAbandonedRequestIsNoLongerInFlight() returns error? {
     Window after = stats.take();
     test:assertEquals(after.inFlight, 0);
     test:assertEquals(after.requests, 1);
+}
+
+@test:Config
+function testIssuedSessionsAreCountedPerWindow() {
+    Stats counters = new;
+    counters.issued();
+    counters.issued();
+    counters.issued();
+    test:assertEquals(counters.take().newSessions, 3);
+    test:assertEquals(counters.take().newSessions, 0);
 }

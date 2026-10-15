@@ -10,6 +10,12 @@ configurable int maxBodyBytes = 1000000;
 configurable int maxRequestSeconds = 120;
 configurable int statsIntervalSeconds = 60;
 configurable string allowedPorts = "443";
+configurable int sessionRequestsPerMinute = 120;
+configurable int sessionBurst = 30;
+configurable int newSessionsPerMinute = 12;
+configurable int newSessionBurst = 6;
+configurable int maxSessions = 10000;
+configurable int sessionLifetimeSeconds = 1800;
 
 const int MAX_BODY_BYTES_LIMIT = 1073741824;
 
@@ -25,6 +31,12 @@ function init() returns error? {
     check checkAtLeast("burst", burst, 1);
     check checkAtLeast("maxRequestSeconds", maxRequestSeconds, 1);
     check checkAtLeast("statsIntervalSeconds", statsIntervalSeconds, 1);
+    check checkAtLeast("sessionRequestsPerMinute", sessionRequestsPerMinute, 1);
+    check checkAtLeast("sessionBurst", sessionBurst, 1);
+    check checkAtLeast("newSessionsPerMinute", newSessionsPerMinute, 1);
+    check checkAtLeast("newSessionBurst", newSessionBurst, 1);
+    check checkAtLeast("maxSessions", maxSessions, 1);
+    check checkAtLeast("sessionLifetimeSeconds", sessionLifetimeSeconds, 1);
     check checkTelemetryIsOff(observe:isObservabilityEnabled(), observe:isMetricsEnabled(), observe:isTracingEnabled());
 
     _ = start reportEvery(statsIntervalSeconds);
