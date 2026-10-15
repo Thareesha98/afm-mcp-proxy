@@ -9,14 +9,19 @@ BODY=$(mktemp)
 trap 'rm -f "$HEADERS" "$BODY"' EXIT
 FAILURES=0
 STATUS=""
+SESSION=""
 
 call() {
     local method=$1 target=$2
     shift 2
+    local session=()
+    if [ -n "$SESSION" ]; then
+        session=(-H "X-Choreo-Correlation-Id: $SESSION")
+    fi
     if [ -n "$target" ]; then
-        STATUS=$(curl -s -m 40 -X "$method" --url-query "target=$target" -D "$HEADERS" -o "$BODY" -w '%{http_code}' "$@" "$PROXY_URL")
+        STATUS=$(curl -s -m 40 -X "$method" --url-query "target=$target" -D "$HEADERS" -o "$BODY" -w '%{http_code}' ${session[@]+"${session[@]}"} "$@" "$PROXY_URL")
     else
-        STATUS=$(curl -s -m 40 -X "$method" -D "$HEADERS" -o "$BODY" -w '%{http_code}' "$@" "$PROXY_URL")
+        STATUS=$(curl -s -m 40 -X "$method" -D "$HEADERS" -o "$BODY" -w '%{http_code}' ${session[@]+"${session[@]}"} "$@" "$PROXY_URL")
     fi
 }
 
@@ -60,12 +65,20 @@ else
     fail "1  unexpected answer (HTTP $STATUS)" "Check PROXY_URL (try it with and without a trailing slash). Body: $(head -c 200 "$BODY")"
 fi
 
-REQUESTED="authorization, content-type, mcp-session-id, mcp-protocol-version, last-event-id, x-api-key"
+SESSION=$(header x-choreo-correlation-id)
+if [[ "$SESSION" =~ ^afm-[0-9a-f-]{36}$ ]]; then
+    pass "1b the first request was given a session id (used for every later request, like a real client)"
+else
+    fail "1b no session id was issued" "The deployed proxy may be an older build without sessions, or the gateway removed the response header. Header seen: '$SESSION'"
+    SESSION=""
+fi
+
+REQUESTED="authorization, content-type, mcp-session-id, mcp-protocol-version, last-event-id, x-api-key, x-choreo-correlation-id"
 call OPTIONS "" -H "Origin: $APP_ORIGIN" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: $REQUESTED"
 ALLOW_ORIGIN=$(header access-control-allow-origin)
 ALLOW_HEADERS=$(header access-control-allow-headers | tr 'A-Z' 'a-z')
 MISSING=""
-for name in authorization content-type mcp-session-id mcp-protocol-version last-event-id x-api-key; do
+for name in authorization content-type mcp-session-id mcp-protocol-version last-event-id x-api-key x-choreo-correlation-id; do
     case ",$(echo "$ALLOW_HEADERS" | tr -d ' ')," in
         *",$name,"*) ;;
         *) MISSING="$MISSING $name" ;;
@@ -142,6 +155,15 @@ elif [ "$STATUS" = "307" ]; then
     fail "7  the redirect was handed back instead of followed (HTTP 307)" "The deployed proxy is an older build without redirect following. Rebuild and deploy it."
 else
     fail "7  following a redirect gave HTTP $STATUS" "Body: $(head -c 300 "$BODY")"
+fi
+
+call GET "https://example.com/" -H "Origin: $APP_ORIGIN"
+if [ -z "$SESSION" ]; then
+    echo "SKIP  8  the session id was not issued, so recognition was not checked"
+elif [ "$STATUS" = "200" ] && [ -z "$(header x-choreo-correlation-id)" ]; then
+    pass "8  the session id is recognised on later requests (the gateway passes X-Choreo-Correlation-Id through)"
+else
+    fail "8  the session id was not recognised (HTTP $STATUS)" "The gateway may be replacing the X-Choreo-Correlation-Id request header, or the session ended. Id in the answer: '$(header x-choreo-correlation-id)'"
 fi
 
 echo

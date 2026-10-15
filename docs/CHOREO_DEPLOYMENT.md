@@ -90,7 +90,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
    |---|---|---|
    | `allowedOrigins` | your app origin, for example `https://app.example.com`. Several origins are comma-separated. | Without it only `http://localhost:5173` is allowed, and your app gets 403. No `*`, no path. |
    | `maxRequestSeconds` | `50` | The gateway cuts a request at 1 minute by default. With 50 the proxy answers first, and its error carries CORS headers so the browser app can read it. Raise both together if you raise the gateway timeout. |
-   | everything else | leave the default | `port` stays 8787 and must always match `.choreo/component.yaml`. `allowLoopback` must stay `false`. `allowedPorts` stays `443` unless an MCP server you need uses another https port. `requestsPerMinute` 1200, `burst` 300 and `maxBodyBytes` 1000000 are fine for now. |
+   | everything else | leave the default | `port` stays 8787 and must always match `.choreo/component.yaml`. `allowLoopback` must stay `false`. `allowedPorts` stays `443` unless an MCP server you need uses another https port. `requestsPerMinute` 1200, `burst` 300 and `maxBodyBytes` 1000000 are fine for now. The session settings (`sessionRequestsPerMinute` 120, `sessionBurst` 30, `newSessionsPerMinute` 12, `newSessionBurst` 6, `maxSessions` 10000, `sessionLifetimeSeconds` 1800) are fine too; keep one replica, because the session table is per instance. |
 
    Optional but recommended, after the first successful deploy: on the **Deploy** page click **Manage Configs and Secrets** in the environment card, expand **Environment Variables**, click **+ Add a Configuration**, add `BAL_CONFIG_VAR_BALLERINA_HTTP_MAXBACKPRESSURESTALLTIME` with the value `10`, then **Save and Deploy**. It makes an abandoned transfer free its connection in seconds instead of minutes. Spell the name exactly, because a wrong `BAL_CONFIG_VAR_` name stops the proxy from starting. Check the **Application** log again afterwards for the `listening` line.
 
@@ -116,7 +116,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
    |---|---|---|
    | 1 with HTTP 401 | The gateway still wants a token. | Step 5.4: turn endpoint authentication off, deploy again. |
    | 1 with HTTP 404 | The URL path is wrong. | Compare with the invoke URL; try with and without the trailing `/`. |
-   | 2 with a different origin or a short header list | The gateway answers the browser's preflight with its own CORS settings. | In the console find the CORS settings for the endpoint (documented as the **CORS, Rate Limiting and Resiliency** pane). If the console lets you turn gateway CORS off, do that, so the proxy answers. Otherwise allow your exact origin, the methods GET, POST, DELETE, OPTIONS, and the headers `authorization`, `content-type`, `mcp-session-id`, `mcp-protocol-version`, `last-event-id`, `x-api-key`, and expose `mcp-session-id` and `www-authenticate`. |
+   | 2 with a different origin or a short header list | The gateway answers the browser's preflight with its own CORS settings. | In the console find the CORS settings for the endpoint (documented as the **CORS, Rate Limiting and Resiliency** pane). If the console lets you turn gateway CORS off, do that, so the proxy answers. Otherwise allow your exact origin, the methods GET, POST, DELETE, OPTIONS, and the headers `authorization`, `content-type`, `mcp-session-id`, `mcp-protocol-version`, `last-event-id`, `x-api-key`, `x-choreo-correlation-id`, and expose `mcp-session-id`, `www-authenticate` and `x-choreo-correlation-id`. Without `x-choreo-correlation-id` in the allowed headers the browser refuses every request that carries a session id. |
    | 3 to 5 with the proxy's own messages | The proxy works as designed. | Compare the message with the table below. |
    | 6 | Headers are altered on the way. | Keep the printed output and look at the gateway logs. |
 
@@ -132,7 +132,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
 | 403 | `Origin not allowed` / `Target resolves to a blocked address range` / `Target port is not allowed` | origin not in `allowedOrigins`, a private target, or a port not in `allowedPorts` |
 | 405 | `Method not allowed` | anything but GET, POST, DELETE, OPTIONS |
 | 413 | `Request body too large` | body over `maxBodyBytes` |
-| 429 | `Too many requests` (with `Retry-After: 60`) | the proxy's own limit |
+| 429 | `Too many requests` / `Too many requests from this session` (both with `Retry-After: 60`) | the proxy's shared limit, or the limit of one session |
 | 500 | `Internal error` | an unexpected failure inside the proxy (report it with the time) |
 | 502 | `Failed to validate target` / `Upstream request failed` | DNS failed or the target could not be reached |
 | 504 | `Upstream timed out` | no answer within `maxRequestSeconds` |
@@ -160,7 +160,7 @@ If it fails with a message about the Ballerina version or distribution, stop and
 Every minute the proxy writes one line of counts to the **Application** log (no URLs, headers or addresses). See **Observability** → **Runtime Logs**, log type **Application**, and search for `stats requests=`:
 
 ```text
-stats requests=412 ok=380 redirects=2 clientErrors=25 serverErrors=5 forbidden=12 rateLimited=8 upstreamErrors=2 internalErrors=0 inFlight=3 peakInFlight=17
+stats requests=412 ok=380 redirects=2 clientErrors=25 serverErrors=5 forbidden=12 rateLimited=8 upstreamErrors=2 internalErrors=0 newSessions=9 inFlight=3 peakInFlight=17 sessions=41
 ```
 
 `forbidden`, `rateLimited`, `upstreamErrors` and `internalErrors` are what the proxy itself refused; the four status classes count every answer, including a target's own errors. When the rate limit refused something, or an internal error happened, a `WARN` line follows. Choreo's Log alerts match a phrase, so they can email you about exactly those lines.
