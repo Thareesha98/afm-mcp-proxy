@@ -8,7 +8,7 @@ It adds nothing to the traffic and has no database and no logging of requests. T
 
 - Takes `GET`, `POST` and `DELETE` requests for `/?target=<url-encoded https URL>` and forwards them to the target. The response, including a server-sent event stream, is passed back as it arrives.
 - Answers the browser's `OPTIONS` preflight and adds CORS headers, but only for the origins in `allowedOrigins`. A request from any other origin gets 403.
-- Refuses targets that resolve to private, loopback or otherwise non-public addresses. The name is resolved once and the proxy connects to the address it checked, over TLS with the host name verified. A target may only use a port from `allowedPorts` (443 by default).
+- Refuses targets that resolve to private, loopback or otherwise non-public addresses. The name is resolved once and the proxy connects to the address it checked, over TLS with the host name verified. The next checked address is tried only when the connection could not be made (refused, unreachable, timed out or the TLS handshake failed); a request that has been sent to a server is never sent again. A target may only use a port from `allowedPorts` (443 by default).
 - Follows redirects (301, 302, 303, 307, 308) itself, up to 3, but only for a `GET` that has no body and no credential. A credential is any header whose name contains `auth`, `key`, `token`, `secret`, `session`, `cookie`, `password` or `credential`, such as `Authorization`, `X-Api-Key` or `Mcp-Session-Id`. Every hop is checked exactly like the first target, so a redirect to a private address is refused with 502. A hop to another host is sent with only `Accept`, `Accept-Encoding`, `Accept-Language`, `Content-Type`, `Mcp-Protocol-Version` and `User-Agent`.
 - Never follows a redirect for a request that has a body or a credential, nor for `POST` and `DELETE`, not even on the same host. The proxy answers 502 `The target answered with a redirect, which is not followed for a request with a body or credentials` and does not pass the redirect on, because the browser would send the body again itself. A server that redirects its MCP address (for example `/mcp` to `/mcp/`) has to be used at the final address.
 - Passes `Authorization`, `X-Api-Key` and similar headers to the target, and never forwards `Cookie`, `Origin`, `Referer`, proxy headers or the headers Choreo adds (`X-Choreo-*`, `X-Envoy-*`, `X-Correlation-Id`, `X-Trace-Key`). `Set-Cookie` is never returned.
@@ -90,7 +90,7 @@ To stop all use quickly while keeping the endpoint, set `allowedOrigins` to a ma
 
 ```bash
 bal run
-bal test                              # needs ports 9300, 9301 and 9302 free
+bal test                              # needs ports 9300 to 9304 free
 bal test --disable-groups network     # without the two tests that need the internet
 ```
 

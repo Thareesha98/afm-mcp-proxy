@@ -184,3 +184,45 @@ service class KeepAliveConnection {
         }
     }
 }
+
+isolated int requestsSeen = 0;
+
+isolated function seenCount() returns int {
+    lock {
+        return requestsSeen;
+    }
+}
+
+listener tcp:Listener answeringListener = new (9303, localHost = "127.0.0.1");
+listener tcp:Listener droppingListener = new (9304, localHost = "127.0.0.1");
+
+service on answeringListener, droppingListener {
+    remote function onConnect(tcp:Caller caller) returns tcp:ConnectionService {
+        return new CountingConnection(caller.localPort == 9304);
+    }
+}
+
+service class CountingConnection {
+    *tcp:ConnectionService;
+
+    private final boolean drop;
+
+    function init(boolean drop) {
+        self.drop = drop;
+    }
+
+    remote function onBytes(tcp:Caller caller, readonly & byte[] data) returns tcp:Error? {
+        string|error text = string:fromBytes(data);
+        if text is error || !(text.startsWith("GET /") || text.startsWith("POST /") || text.startsWith("DELETE /")) {
+            return;
+        }
+        lock {
+            requestsSeen += 1;
+        }
+        if self.drop {
+            check caller->close();
+        } else {
+            check caller->writeBytes("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".toBytes());
+        }
+    }
+}

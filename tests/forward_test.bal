@@ -257,6 +257,63 @@ function testForwardTriesTheNextAddressWhenOneFails() returns error? {
 }
 
 @test:Config
+function testNextAddressIsTriedWhenTheConnectionIsRefused() returns error? {
+    int before = seenCount();
+    string text = check textOf(sendTo(localTarget("/ok", ["0:0:0:0:0:0:0:1", "127.0.0.1"], 9303), "POST", {}, "hello".toBytes()));
+    test:assertEquals(text, "ok");
+    test:assertEquals(seenCount(), before + 1);
+}
+
+@test:Config
+function testARequestThatWasWrittenIsNotSentToTheNextAddress() {
+    foreach string method in ["GET", "POST"] {
+        int before = seenCount();
+        assertForwardStatus(sendTo(localTarget("/", ["127.0.0.1", "127.0.0.1"], 9304), method, {}, method == "POST" ? "hello".toBytes() : []), 502);
+        test:assertEquals(seenCount(), before + 1, method);
+    }
+}
+
+@test:Config
+function testAFailureWhileWritingTheBodyIsNotSentToTheNextAddress() {
+    byte[] body = [];
+    foreach int i in 0 ..< 900000 {
+        body.push(97);
+    }
+    int before = seenCount();
+    assertForwardStatus(sendTo(localTarget("/", ["127.0.0.1", "127.0.0.1"], 9304), "POST", {}, body), 502);
+    test:assertEquals(seenCount(), before + 1);
+}
+
+@test:Config
+function testOnlyAFailureBeforeTheRequestWasWrittenAllowsTheNextAddress() {
+    foreach string cause in [
+        "Connection refused: /1.2.3.4:443",
+        "connection timed out after 10000 ms: /1.2.3.4:443",
+        "Connection timeout: /1.2.3.4:443",
+        "Connection timed out: /1.2.3.4:443",
+        "No route to host: /1.2.3.4:443",
+        "Network is unreachable: /1.2.3.4:443",
+        "Remote host: /1.2.3.4:443 closed the connection while SSL handshake"
+    ] {
+        test:assertTrue(neverSent(error http:ClientConnectorError("Something wrong with the connection", error(cause))), cause);
+    }
+    test:assertTrue(neverSent(error http:GenericClientError("Something wrong with the connection", error("Connection timeout: /1.2.3.4:443"))));
+    test:assertTrue(neverSent(error http:SslError("SSL connection failed:not an SSL/TLS record /1.2.3.4:443")));
+    foreach string cause in [
+        "Remote host closed the connection while writing outbound request entity body",
+        "Remote host closed the connection while writing outbound request headers",
+        "Remote host closed the connection before initiating inbound response",
+        "Connection reset by peer",
+        "Broken pipe"
+    ] {
+        test:assertFalse(neverSent(error http:ClientConnectorError("Something wrong with the connection", error(cause))), cause);
+    }
+    test:assertFalse(neverSent(error http:ClientConnectorError("Something wrong with the connection")));
+    test:assertFalse(neverSent(error http:GenericClientError("Connection reset")));
+    test:assertFalse(neverSent(error http:GenericClientError("Remote host closed the connection before initiating inbound response")));
+}
+
+@test:Config
 function testForwardReachesIpv6Addresses() returns error? {
     string text = check textOf(sendTo(localTarget("/echo", ["0:0:0:0:0:0:0:1"])));
     test:assertTrue(text.startsWith("GET /echo"), text);

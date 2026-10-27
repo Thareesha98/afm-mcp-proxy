@@ -139,8 +139,17 @@ function send(Target target, string method, map<string|string[]> headers, byte[]
         if response is http:IdleTimeoutError {
             return error RequestError("Upstream timed out", status = 504);
         }
+        if !neverSent(response) {
+            break;
+        }
     }
     return error RequestError("Upstream request failed", status = 502);
+}
+
+function neverSent(http:ClientError err) returns boolean {
+    error? cause = err.cause();
+    return err is http:SslError
+        || (cause is error && re `.*(Connection refused|[Cc]onnection time(d )?out|No route to host|Network is unreachable|SSL handshake).*`.isFullMatch(cause.message()));
 }
 
 function prepareResponse(http:Response up) returns http:Response {
