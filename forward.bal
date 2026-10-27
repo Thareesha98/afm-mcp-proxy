@@ -82,13 +82,15 @@ function hostHeader(Target target) returns string {
 function forward(Target target, string method, map<string|string[]> headers, byte[] body, decimal seconds,
         decimal connectTimeout = CONNECT_TIMEOUT) returns http:Response|RequestError {
     decimal deadline = time:monotonicNow() + seconds;
+    boolean followRedirects = mayFollowRedirects(method, headers, body);
     Target current = target;
-    string currentMethod = method;
-    byte[] currentBody = body;
     map<string|string[]> currentHeaders = headers;
     int redirects = 0;
     while true {
-        http:Response response = check send(current, currentMethod, currentHeaders, currentBody, deadline - time:monotonicNow(), connectTimeout);
+        http:Response response = check send(current, method, currentHeaders, body, deadline - time:monotonicNow(), connectTimeout);
+        if !followRedirects && isRedirect(response) {
+            return error RequestError("The target answered with a redirect, which is not followed for a request with a body or credentials", status = 502);
+        }
         string? location = redirectLocation(response);
         if location is () {
             return response;
@@ -100,12 +102,7 @@ function forward(Target target, string method, map<string|string[]> headers, byt
         if next is RequestError {
             return error RequestError("Redirect target is not allowed", status = 502);
         }
-        boolean toGet = turnsIntoGet(response.statusCode, currentMethod);
-        currentHeaders = redirectHeaders(currentHeaders, next, sameOrigin(current, next), !toGet);
-        if toGet {
-            currentMethod = "GET";
-            currentBody = [];
-        }
+        currentHeaders = redirectHeaders(currentHeaders, next, sameOrigin(current, next));
         current = next;
         redirects += 1;
     }

@@ -162,15 +162,74 @@ function testRedirectToABlockedAddressIsAn502WithCors() returns error? {
 }
 
 @test:Config
-function testCredentialsFollowARedirectOnlyOnTheSameHost() returns error? {
-    http:Response same = check call("GET", UP + "/redirect", {"Authorization": "Bearer abc", "X-Api-Key": "key-1"});
-    string sameText = check same.getTextPayload();
-    test:assertTrue(sameText.includes("authorization: Bearer abc") && sameText.includes("x-api-key: key-1"), sameText);
-    http:Response other = check call("GET", UP + "/to?status=307&location=http%3A%2F%2Flocalhost%3A9301%2Fecho", {"Authorization": "Bearer abc", "X-Api-Key": "key-1"});
-    string otherText = check other.getTextPayload();
-    test:assertTrue(otherText.startsWith("GET /echo\n"), otherText);
-    test:assertFalse(otherText.includes("authorization") || otherText.includes("x-api-key"), otherText);
+function testARedirectIsNotFollowedForACredentialOrABody() returns error? {
+    string message = "The target answered with a redirect, which is not followed for a request with a body or credentials";
+    foreach string location in ["/mark", "http://localhost:9301/mark"] {
+        foreach int status in [301, 302, 303, 307, 308] {
+            string target = UP + check toLocation(status, location);
+            int before = markCount();
+            foreach string name in ["Authorization", "X-Custom-Api-Key", "Mcp-Session-Id"] {
+                http:Response withCredential = check call("GET", target, {[name]: "FAKE_SECRET"});
+                check assertError(withCredential, 502, message);
+                test:assertEquals(headerOf(withCredential, "Access-Control-Allow-Origin"), ORIGIN);
+                test:assertFalse(withCredential.hasHeader("Location"));
+            }
+            http:Response withBody = check call("POST", target, {"Content-Type": "application/x-www-form-urlencoded"},
+                "grant_type=refresh_token&refresh_token=FAKE_AUDIT_REFRESH_TOKEN");
+            check assertError(withBody, 502, message);
+            test:assertFalse(withBody.hasHeader("Location"));
+            test:assertEquals(markCount(), before, string `${status} to ${location}`);
+        }
+    }
 }
+
+@test:Config
+function testAFileIsRelayedWithItsBodyAndContentTypeUnchanged() returns error? {
+    http:Response text = check call("GET", UP + "/file/text", {"Accept": "text/plain"});
+    test:assertEquals(text.statusCode, 200);
+    test:assertEquals(check text.getTextPayload(), SHARED_FILE);
+    test:assertEquals(headerOf(text, "Content-Type"), SHARED_FILE_TYPE);
+    http:Response binary = check call("GET", UP + "/file/binary");
+    test:assertEquals(binary.statusCode, 200);
+    test:assertEquals(check binary.getBinaryPayload(), allByteValues());
+    test:assertEquals(headerOf(binary, "Content-Type"), "application/octet-stream");
+}
+
+@test:Config
+function testAShareLinkIsFollowedWithTheHeadersTheWebAppSends() returns error? {
+    http:Response first = check call("GET", UP + "/file/text");
+    map<string|string[]> headers = {...BROWSER, "Referer": ORIGIN + "/", "X-Choreo-Correlation-Id": headerOf(first, "X-Choreo-Correlation-Id") ?: ""};
+    foreach int hops in [1, 2, 3] {
+        http:Response res = check call("GET", UP + check shareLink(hops), headers);
+        test:assertEquals(res.statusCode, 200, hops.toString());
+        test:assertEquals(check res.getTextPayload(), SHARED_FILE, hops.toString());
+        test:assertEquals(headerOf(res, "Content-Type"), SHARED_FILE_TYPE, hops.toString());
+        test:assertEquals(headerOf(res, "Access-Control-Allow-Origin"), ORIGIN);
+    }
+    check assertError(check call("GET", UP + check shareLink(4), headers), 502, "Too many redirects");
+}
+
+@test:Config
+function testTheFileHostSeesNeitherTheSessionHeaderNorTheOrigin() returns error? {
+    http:Response first = check call("GET", UP + "/file/text");
+    map<string|string[]> headers = {...BROWSER, "Referer": ORIGIN + "/", "X-Choreo-Correlation-Id": headerOf(first, "X-Choreo-Correlation-Id") ?: ""};
+    foreach string target in [UP + "/echo", UP + check shareLink(1, "/echo"), UP + check shareLink(2, "/echo")] {
+        string text = check (check call("GET", target, headers)).getTextPayload();
+        test:assertTrue(text.includes("accept: text/plain"), text);
+        foreach string name in ["x-choreo-correlation-id", "origin", "referer", "cookie", "x-forwarded-for"] {
+            test:assertFalse(text.includes(name + ":"), name + " reached the file host: " + text);
+        }
+    }
+}
+
+@test:Config
+function testCookiesFromTheFileHostNeverReachTheBrowser() returns error? {
+    http:Response res = check call("GET", UP + "/cookiehop?to=%2Fheaders");
+    test:assertEquals(res.statusCode, 200);
+    test:assertEquals(check res.getTextPayload(), "headers");
+    test:assertFalse(res.hasHeader("Set-Cookie"));
+}
+
 
 @test:Config
 function testLargeResponseIsRelayedWhole() returns error? {

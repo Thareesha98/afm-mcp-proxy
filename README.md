@@ -9,7 +9,8 @@ It adds nothing to the traffic and has no database and no logging of requests. T
 - Takes `GET`, `POST` and `DELETE` requests for `/?target=<url-encoded https URL>` and forwards them to the target. The response, including a server-sent event stream, is passed back as it arrives.
 - Answers the browser's `OPTIONS` preflight and adds CORS headers, but only for the origins in `allowedOrigins`. A request from any other origin gets 403.
 - Refuses targets that resolve to private, loopback or otherwise non-public addresses. The name is resolved once and the proxy connects to the address it checked, over TLS with the host name verified. A target may only use a port from `allowedPorts` (443 by default).
-- Follows redirects (301, 302, 303, 307, 308) itself, up to 3, and checks every hop exactly like the first target, so a redirect to a private address is refused with 502. A hop to another host is sent without credentials: only `Accept`, `Accept-Encoding`, `Accept-Language`, `Content-Type`, `Mcp-Protocol-Version` and `User-Agent` go on. 307 and 308 keep the method and body; 303, and 301 or 302 on a POST, become a GET.
+- Follows redirects (301, 302, 303, 307, 308) itself, up to 3, but only for a `GET` that has no body and no credential. A credential is any header whose name contains `auth`, `key`, `token`, `secret`, `session`, `cookie`, `password` or `credential`, such as `Authorization`, `X-Api-Key` or `Mcp-Session-Id`. Every hop is checked exactly like the first target, so a redirect to a private address is refused with 502. A hop to another host is sent with only `Accept`, `Accept-Encoding`, `Accept-Language`, `Content-Type`, `Mcp-Protocol-Version` and `User-Agent`.
+- Never follows a redirect for a request that has a body or a credential, nor for `POST` and `DELETE`, not even on the same host. The proxy answers 502 `The target answered with a redirect, which is not followed for a request with a body or credentials` and does not pass the redirect on, because the browser would send the body again itself. A server that redirects its MCP address (for example `/mcp` to `/mcp/`) has to be used at the final address.
 - Passes `Authorization`, `X-Api-Key` and similar headers to the target, and never forwards `Cookie`, `Origin`, `Referer`, proxy headers or the headers Choreo adds (`X-Choreo-*`, `X-Envoy-*`, `X-Correlation-Id`, `X-Trace-Key`). `Set-Cookie` is never returned.
 - Applies one shared rate limit to the whole relay, and a separate limit to every session (see Sessions). A request from an origin that is not allowed is refused before it uses any of either.
 
@@ -53,7 +54,7 @@ stats requests=412 ok=380 redirects=2 clientErrors=25 serverErrors=5 forbidden=1
 | `ok`, `redirects`, `clientErrors`, `serverErrors` | the status class (2xx, 3xx, 4xx, 5xx) of every answer, whoever produced it |
 | `forbidden` | the proxy's own 403: an origin that is not allowed, a private target, or a port that is not allowed |
 | `rateLimited` | the proxy's own 429 |
-| `upstreamErrors` | the proxy's own 502 and 504: DNS failed, the target was unreachable or too slow, or a redirect went somewhere refused |
+| `upstreamErrors` | the proxy's own 502 and 504: DNS failed, the target was unreachable or too slow, or a redirect was refused or not followed |
 | `internalErrors` | the proxy's own 500 |
 | `newSessions` | session ids handed out since the last line |
 | `sessions` | entries in the session table now, including idle ones that have not been dropped yet |

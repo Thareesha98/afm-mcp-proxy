@@ -19,6 +19,19 @@ class EventTicker {
     }
 }
 
+const string SHARED_FILE = "---\nname: shared agent\n---\nYou are a shared agent.\n";
+const string SHARED_FILE_TYPE = "text/plain;charset=utf-8";
+
+function allByteValues() returns byte[] {
+    byte[] bytes = [];
+    foreach int round in 0 ..< 2 {
+        foreach int value in 0 ..< 256 {
+            bytes.push(<byte>value);
+        }
+    }
+    return bytes;
+}
+
 function echoText(http:Request req) returns string|error {
     string text = req.method + " " + req.rawPath + "\n";
     foreach string name in req.getHeaderNames() {
@@ -35,6 +48,24 @@ service / on upstreamListener {
         match route {
             "echo" => {
                 res.setTextPayload(check echoText(req));
+            }
+            "file" => {
+                if path[1] == "text" {
+                    res.setTextPayload(SHARED_FILE, SHARED_FILE_TYPE);
+                } else {
+                    res.setBinaryPayload(allByteValues(), "application/octet-stream");
+                }
+            }
+            "cookiehop" => {
+                res.statusCode = 302;
+                res.setHeader("Location", req.getQueryParamValue("to") ?: "/echo");
+                res.addHeader("Set-Cookie", "hop=1");
+            }
+            "mark" => {
+                lock {
+                    marks += 1;
+                }
+                res.setTextPayload("marked");
             }
             "to" => {
                 string? location = req.getQueryParamValue("location");
@@ -115,6 +146,14 @@ service / on upstreamListener {
             }
         }
         return res;
+    }
+}
+
+isolated int marks = 0;
+
+isolated function markCount() returns int {
+    lock {
+        return marks;
     }
 }
 
