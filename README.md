@@ -26,7 +26,7 @@ Values come from `Config.toml`, from environment variables named `BAL_CONFIG_VAR
 | `requestsPerMinute` | `1200` | Refill rate of the shared rate limit. |
 | `burst` | `300` | Size of the shared rate limit bucket. |
 | `maxBodyBytes` | `1000000` | Largest accepted request body (1 to 1073741824). |
-| `maxRequestSeconds` | `120` | Time allowed for the target to answer. |
+| `maxRequestSeconds` | `50` | Time allowed for the target to answer. Keep it below the 1 minute the Choreo gateway allows. |
 | `statsIntervalSeconds` | `60` | Seconds between the summary lines of counts. |
 | `sessionRequestsPerMinute` | `120` | Refill rate of the bucket every session has. Requests that carry no valid session id share one bucket of the same size. |
 | `sessionBurst` | `30` | Size of a session bucket. |

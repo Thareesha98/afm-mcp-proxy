@@ -13,6 +13,7 @@ function testSecurityDefaultsAreSafe() returns error? {
     string config = check io:fileReadString("config.bal");
     test:assertTrue(config.includes("configurable boolean allowLoopback = false;"), config);
     test:assertTrue(config.includes("configurable string allowedPorts = \"443\";"), config);
+    test:assertTrue(config.includes("configurable int maxRequestSeconds = 50;"), config);
 }
 
 @test:Config
