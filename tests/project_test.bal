@@ -13,6 +13,14 @@ function testSecurityDefaultsAreSafe() returns error? {
     string config = check io:fileReadString("config.bal");
     test:assertTrue(config.includes("configurable boolean allowLoopback = false;"), config);
     test:assertTrue(config.includes("configurable string allowedPorts = \"443\";"), config);
+    test:assertTrue(config.includes("configurable int maxRequestSeconds = 50;"), config);
+    test:assertTrue(config.includes("configurable int maxResponseBytes = 10485760;"), config);
+}
+
+@test:Config
+function testBuildKeepsTheCommittedDependencyVersions() returns error? {
+    string project = check io:fileReadString("Ballerina.toml");
+    test:assertTrue(project.includes("sticky = true"), project);
 }
 
 @test:Config

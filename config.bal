@@ -7,7 +7,8 @@ configurable boolean allowLoopback = false;
 configurable int requestsPerMinute = 1200;
 configurable int burst = 300;
 configurable int maxBodyBytes = 1000000;
-configurable int maxRequestSeconds = 120;
+configurable int maxResponseBytes = 10485760;
+configurable int maxRequestSeconds = 50;
 configurable int statsIntervalSeconds = 60;
 configurable string allowedPorts = "443";
 configurable int sessionRequestsPerMinute = 120;
@@ -30,6 +31,7 @@ function init() returns error? {
     check checkAtLeast("requestsPerMinute", requestsPerMinute, 1);
     check checkAtLeast("burst", burst, 1);
     check checkAtLeast("maxRequestSeconds", maxRequestSeconds, 1);
+    check checkAtLeast("maxResponseBytes", maxResponseBytes, 1);
     check checkAtLeast("statsIntervalSeconds", statsIntervalSeconds, 1);
     check checkAtLeast("sessionRequestsPerMinute", sessionRequestsPerMinute, 1);
     check checkAtLeast("sessionBurst", sessionBurst, 1);

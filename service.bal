@@ -76,7 +76,7 @@ function serve(http:Request req, boolean sessionAllowed) returns http:Response {
     if upstream is RequestError {
         return failure(upstream);
     }
-    return prepareResponse(upstream);
+    return limitResponseSize(prepareResponse(upstream), maxResponseBytes);
 }
 
 function headerValue(http:Request req, string name) returns string? {

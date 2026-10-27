@@ -3,3 +3,6 @@ org = "thareesha"
 name = "mcp_proxy"
 version = "0.1.0"
 distribution = "2201.13.4"
+
+[build-options]
+sticky = true
