@@ -103,7 +103,7 @@ See [docs/CHOREO_DEPLOYMENT.md](docs/CHOREO_DEPLOYMENT.md) for the Choreo steps 
 
 ## Known limits
 
-- A response is capped at `maxResponseBytes`, but a stream is not cut at a deadline: the timeout is an idle timeout, so the Choreo gateway's 1 minute limit is what ends a long stream. An event stream is counted by the size of its events, near enough, not byte for byte.
+- A response is capped at `maxResponseBytes`, but a stream is not cut at a deadline: the timeout is an idle timeout, so the Choreo gateway's 1 minute limit is what ends a long stream. An event stream is counted by the size of its events, near enough, not byte for byte. When a response is broken off at the limit the proxy lets go of the target at once, but the browser's connection stays open, with nothing more sent, until the listener's idle timeout or the gateway ends it.
 - A request body is read into memory in full, up to `maxBodyBytes`.
 - Rejections made by the HTTP listener itself (414, 431, 408, and a body over twice `maxBodyBytes`) carry no CORS headers.
 - IPv6 literals, internationalised host names and URLs with user-info are not accepted as targets.
