@@ -18,6 +18,12 @@ function testSecurityDefaultsAreSafe() returns error? {
 }
 
 @test:Config
+function testBuildKeepsTheCommittedDependencyVersions() returns error? {
+    string project = check io:fileReadString("Ballerina.toml");
+    test:assertTrue(project.includes("sticky = true"), project);
+}
+
+@test:Config
 function testObservabilityIsNotCompiledIn() returns error? {
     string project = check io:fileReadString("Ballerina.toml");
     test:assertFalse(project.includes("observabilityIncluded"), project);
