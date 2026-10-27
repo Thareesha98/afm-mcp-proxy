@@ -1,4 +1,5 @@
 import ballerina/http;
+import ballerina/io;
 import ballerina/lang.runtime;
 import ballerina/tcp;
 import ballerina/test;
@@ -570,4 +571,87 @@ function testIssuedSessionsAreCountedInTheStats() returns error? {
     Window window = stats.take();
     test:assertEquals(window.newSessions, 2);
     test:assertEquals(window.requests, 3);
+}
+
+const int RESPONSE_LIMIT = 100000;
+
+function bytesBeforeTheEnd(http:Response res) returns int {
+    stream<byte[], io:Error?>|http:ClientError bytes = res.getByteStream();
+    if bytes is http:ClientError {
+        return 0;
+    }
+    int total = 0;
+    while true {
+        record {|byte[] value;|}|io:Error? chunk = bytes.next();
+        if chunk is record {|byte[] value;|} {
+            total += chunk.value.length();
+        } else {
+            return total;
+        }
+    }
+}
+
+@test:Config
+function testAResponseThatSaysItIsOverTheLimitIsRefusedBeforeItIsRead() returns error? {
+    foreach string path in ["/declared/over", "/declared/huge"] {
+        decimal started = time:monotonicNow();
+        http:Response res = check call("GET", "http://127.0.0.1:9305" + path);
+        check assertError(res, 502, "Response too large");
+        test:assertEquals(headerOf(res, "Access-Control-Allow-Origin"), ORIGIN, path);
+        test:assertTrue(time:monotonicNow() - started < 1d, path);
+    }
+}
+
+@test:Config
+function testAResponseUpToTheLimitIsRelayedWhole() returns error? {
+    foreach string route in ["sized", "chunked"] {
+        http:Response res = check call("GET", UP + "/" + route + "?bytes=" + RESPONSE_LIMIT.toString());
+        test:assertEquals(res.statusCode, 200, route);
+        test:assertEquals((check res.getBinaryPayload()).length(), RESPONSE_LIMIT, route);
+        test:assertEquals(headerOf(res, "Content-Type"), "application/octet-stream", route);
+    }
+}
+
+@test:Config
+function testAStreamedResponseIsBrokenOffOnceItGoesOverTheLimit() returns error? {
+    foreach int size in [RESPONSE_LIMIT + 1, 5 * RESPONSE_LIMIT, 200 * RESPONSE_LIMIT] {
+        http:Response res = check call("GET", UP + "/chunked?bytes=" + size.toString());
+        int received = bytesBeforeTheEnd(res);
+        test:assertTrue(received <= RESPONSE_LIMIT, string `${received} bytes of ${size} reached the browser`);
+        test:assertTrue(received < size, string `the whole ${size} bytes reached the browser`);
+    }
+}
+
+@test:Config
+function testAnEventStreamIsBrokenOffOnceItGoesOverTheLimit() returns error? {
+    http:Response res = check call("GET", UP + "/manyevents?count=1000&size=1000");
+    stream<http:SseEvent, error?> events = check res.getSseEventStream();
+    int count = 0;
+    while true {
+        record {|http:SseEvent value;|}|error? event = events.next();
+        if event is record {|http:SseEvent value;|} {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    test:assertTrue(count * 1000 <= RESPONSE_LIMIT, string `${count} events of 1000 bytes reached the browser`);
+    test:assertTrue(count > 0, "no event arrived");
+}
+
+@test:Config
+function testAnEventStreamUnderTheLimitArrivesWhole() returns error? {
+    http:Response res = check call("GET", UP + "/manyevents?count=50&size=1000");
+    stream<http:SseEvent, error?> events = check res.getSseEventStream();
+    int count = 0;
+    while (check events.next()) is record {|http:SseEvent value;|} {
+        count += 1;
+    }
+    test:assertEquals(count, 50);
+}
+
+@test:Config
+function testAResponseWithNoBodyIsRelayed() returns error? {
+    http:Response res = check call("GET", UP + "/nobody");
+    test:assertEquals(res.statusCode, 204);
 }

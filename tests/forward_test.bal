@@ -404,3 +404,10 @@ function testHttpsCertificateMustMatchTheHostname() returns error? {
     Target wrongName = {scheme: "https", host: "wrong.host.badssl.com", port: 443, pathAndQuery: "/", addresses: real.addresses};
     assertForwardStatus(forward(wrongName, "GET", requestHeaders(new, wrongName), [], 20), 502);
 }
+
+@test:Config
+function testEventsAreCountedWithTheirFieldNames() {
+    test:assertEquals(eventSize({data: "abc"}), 2 + 3 + 4 + 3);
+    test:assertEquals(eventSize({data: "é"}), 2 + 2 + 4 + 3);
+    test:assertEquals(eventSize({data: "a", event: "b", id: "c", comment: "d", 'retry: 5}), 2 + (1 + 4 + 3) + (1 + 5 + 3) + (1 + 2 + 3) + (1 + 0 + 3) + 10);
+}

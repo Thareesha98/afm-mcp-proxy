@@ -26,6 +26,7 @@ Values come from `Config.toml`, from environment variables named `BAL_CONFIG_VAR
 | `requestsPerMinute` | `1200` | Refill rate of the shared rate limit. |
 | `burst` | `300` | Size of the shared rate limit bucket. |
 | `maxBodyBytes` | `1000000` | Largest accepted request body (1 to 1073741824). |
+| `maxResponseBytes` | `10485760` | Largest response passed back (10 MB). A response that says it is larger gets 502 `Response too large`; one that does not say its size is broken off once it passes the limit. |
 | `maxRequestSeconds` | `50` | Time allowed for the target to answer. Keep it below the 1 minute the Choreo gateway allows. |
 | `statsIntervalSeconds` | `60` | Seconds between the summary lines of counts. |
 | `sessionRequestsPerMinute` | `120` | Refill rate of the bucket every session has. Requests that carry no valid session id share one bucket of the same size. |
@@ -90,7 +91,7 @@ To stop all use quickly while keeping the endpoint, set `allowedOrigins` to a ma
 
 ```bash
 bal run
-bal test                              # needs ports 9300 to 9304 free
+bal test                              # needs ports 9300 to 9305 free
 bal test --disable-groups network     # without the two tests that need the internet
 ```
 
@@ -102,7 +103,7 @@ See [docs/CHOREO_DEPLOYMENT.md](docs/CHOREO_DEPLOYMENT.md) for the Choreo steps 
 
 ## Known limits
 
-- A response is never capped in size, and a stream is not cut at a deadline: the timeout is an idle timeout.
+- A response is capped at `maxResponseBytes`, but a stream is not cut at a deadline: the timeout is an idle timeout, so the Choreo gateway's 1 minute limit is what ends a long stream. An event stream is counted by the size of its events, near enough, not byte for byte.
 - A request body is read into memory in full, up to `maxBodyBytes`.
 - Rejections made by the HTTP listener itself (414, 431, 408, and a body over twice `maxBodyBytes`) carry no CORS headers.
 - IPv6 literals, internationalised host names and URLs with user-info are not accepted as targets.

@@ -14,6 +14,7 @@ function testSecurityDefaultsAreSafe() returns error? {
     test:assertTrue(config.includes("configurable boolean allowLoopback = false;"), config);
     test:assertTrue(config.includes("configurable string allowedPorts = \"443\";"), config);
     test:assertTrue(config.includes("configurable int maxRequestSeconds = 50;"), config);
+    test:assertTrue(config.includes("configurable int maxResponseBytes = 10485760;"), config);
 }
 
 @test:Config

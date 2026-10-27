@@ -1,8 +1,51 @@
 import ballerina/http;
+import ballerina/io;
 import ballerina/lang.runtime;
 import ballerina/tcp;
 
 listener http:Listener upstreamListener = new (9301, requestLimits = {maxUriLength: 16384, maxHeaderSize: 16384});
+
+class ByteChunks {
+    private int left;
+
+    function init(int total) {
+        self.left = total;
+    }
+
+    public isolated function next() returns record {|byte[] value;|}|io:Error? {
+        if self.left <= 0 {
+            return ();
+        }
+        int size = int:min(self.left, 4096);
+        self.left -= size;
+        byte[] chunk = [];
+        chunk.setLength(size);
+        return {value: chunk};
+    }
+}
+
+class SizedEvents {
+    private int left;
+    private final string data;
+
+    function init(int count, int size) {
+        self.left = count;
+        self.data = "".padEnd(size, "x");
+    }
+
+    public isolated function next() returns record {|http:SseEvent value;|}|error? {
+        if self.left == 0 {
+            return ();
+        }
+        self.left -= 1;
+        return {value: {data: self.data}};
+    }
+}
+
+function intParam(http:Request req, string name) returns int {
+    int|error value = int:fromString(req.getQueryParamValue(name) ?: "0");
+    return value is int ? value : 0;
+}
 
 class EventTicker {
     private int sent = 0;
@@ -105,6 +148,22 @@ service / on upstreamListener {
             "redirect" => {
                 res.statusCode = 302;
                 res.setHeader("Location", "/echo");
+            }
+            "sized" => {
+                byte[] body = [];
+                body.setLength(intParam(req, "bytes"));
+                res.setBinaryPayload(body, "application/octet-stream");
+            }
+            "chunked" => {
+                stream<byte[], io:Error?> chunks = new (new ByteChunks(intParam(req, "bytes")));
+                res.setByteStream(chunks, "application/octet-stream");
+            }
+            "manyevents" => {
+                stream<http:SseEvent, error?> events = new (new SizedEvents(intParam(req, "count"), intParam(req, "size")));
+                res.setSseEventStream(events);
+            }
+            "nobody" => {
+                res.statusCode = 204;
             }
             "slow" => {
                 runtime:sleep(1.5);
@@ -226,3 +285,29 @@ service class CountingConnection {
         }
     }
 }
+
+// answers with exactly the bytes a test asks for, so a response can claim any size
+listener tcp:Listener rawListener = new (9305, localHost = "127.0.0.1");
+
+service on rawListener {
+    remote function onConnect(tcp:Caller caller) returns tcp:ConnectionService {
+        return new RawAnswer();
+    }
+}
+
+service class RawAnswer {
+    *tcp:ConnectionService;
+
+    remote function onBytes(tcp:Caller caller, readonly & byte[] data) returns tcp:Error? {
+        string|error text = string:fromBytes(data);
+        if text is error || !text.startsWith("GET /") {
+            return;
+        }
+        string declared = text.startsWith("GET /declared/huge") ? "1000000000" : "100001";
+        byte[] body = [];
+        body.setLength(4096);
+        check caller->writeBytes(string `HTTP/1.1 200 OK${"\r\n"}Content-Type: application/octet-stream${"\r\n"}Content-Length: ${declared}${"\r\n\r\n"}`.toBytes());
+        check caller->writeBytes(body);
+    }
+}
+
